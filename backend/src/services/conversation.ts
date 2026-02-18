@@ -1,0 +1,145 @@
+import { getPool } from "../db.js";
+import { NormalizedInbound } from "../adapters/types.js";
+
+/**
+ * Resolve ou cria Conversation para um thread externo.
+ */
+export async function resolveConversationForInbound(inb: NormalizedInbound, connectorId: string, channelId: string) {
+  const pool = await getPool();
+
+  // tenta achar map
+  const found = await pool.request()
+    .input("tenantId", inb.tenantId)
+    .input("connectorId", connectorId)
+    .input("externalChatId", inb.externalChatId)
+    .query(`
+      SELECT ConversationId
+      FROM omni.ExternalThreadMap
+      WHERE TenantId=@tenantId AND ConnectorId=@connectorId AND ExternalChatId=@externalChatId
+    `);
+
+  if (found.recordset.length > 0) return found.recordset[0].ConversationId as string;
+
+  // cria conversa
+  const title = `WhatsApp • ${inb.externalUserId}`;
+  const created = await pool.request()
+    .input("tenantId", inb.tenantId)
+    .input("channelId", channelId)
+    .input("title", title)
+    .input("connectorId", connectorId)
+    .input("externalChatId", inb.externalChatId)
+    .input("externalUserId", inb.externalUserId)
+    .query(`
+      DECLARE @cid UNIQUEIDENTIFIER = NEWID();
+      INSERT INTO omni.Conversation (ConversationId, TenantId, ChannelId, Title, Kind, Status)
+      VALUES (@cid, @tenantId, @channelId, @title, 'DIRECT', 'OPEN');
+
+      INSERT INTO omni.ExternalThreadMap (TenantId, ConnectorId, ExternalChatId, ExternalUserId, ConversationId)
+      VALUES (@tenantId, @connectorId, @externalChatId, @externalUserId, @cid);
+
+      SELECT @cid AS ConversationId;
+    `);
+
+  return created.recordset[0].ConversationId as string;
+}
+
+export async function saveInboundMessage(inb: NormalizedInbound, conversationId: string) {
+  const pool = await getPool();
+  await pool.request()
+    .input("tenantId", inb.tenantId)
+    .input("conversationId", conversationId)
+    .input("senderExternalId", inb.externalUserId)
+    .input("direction", "IN")
+    .input("body", inb.text ?? (inb.mediaType ? `[${inb.mediaType}]` : ""))
+    .input("mediaType", inb.mediaType ?? null)
+    .input("mediaUrl", inb.mediaUrl ?? null)
+    .input("payload", JSON.stringify(inb.raw))
+    .query(`
+      INSERT INTO omni.Message (TenantId, ConversationId, SenderExternalId, Direction, Body, MediaType, MediaUrl, PayloadJson)
+      VALUES (@tenantId, @conversationId, @senderExternalId, @direction, @body, @mediaType, @mediaUrl, @payload);
+
+      UPDATE omni.Conversation SET LastMessageAt = SYSUTCDATETIME()
+      WHERE ConversationId=@conversationId;
+    `);
+}
+
+export async function saveOutboundMessage(tenantId: string, conversationId: string, body: string) {
+  const pool = await getPool();
+  await pool.request()
+    .input("tenantId", tenantId)
+    .input("conversationId", conversationId)
+    .input("direction", "OUT")
+    .input("body", body)
+    .query(`
+      INSERT INTO omni.Message (TenantId, ConversationId, Direction, Body)
+      VALUES (@tenantId, @conversationId, @direction, @body);
+
+      UPDATE omni.Conversation SET LastMessageAt = SYSUTCDATETIME()
+      WHERE ConversationId=@conversationId;
+    `);
+}
+
+/**
+ * Busca conversa existente por telefone ou cria nova usando o primeiro conector WhatsApp ativo.
+ */
+export async function findOrCreateConversation(tenantId: string, phone: string, name?: string) {
+  const pool = await getPool();
+
+  // 1. Tentar achar via ExternalThreadMap
+  // O formato do phone no DB geralmente é 5511999998888@s.whatsapp.net ou 5511...
+  // Vamos assumir que o 'phone' vem limpo (apenas numeros) e o suffix é do provider.
+  // Por simplificação do MVP, vamos tentar match exato no ExternalUserId OU like.
+
+  // Vamos formatar para o padrão do WhatsApp se não tiver @
+  let externalUserId = phone;
+  if (!externalUserId.includes("@")) externalUserId += "@s.whatsapp.net";
+
+  const found = await pool.request()
+    .input("tenantId", tenantId)
+    .input("externalUserId", externalUserId)
+    .query(`
+      SELECT TOP 1 ConversationId
+      FROM omni.ExternalThreadMap
+      WHERE TenantId=@tenantId AND ExternalUserId=@externalUserId
+    `);
+
+  if (found.recordset.length > 0) return found.recordset[0].ConversationId as string;
+
+  // 2. Se não achou, precisamos de um conector para criar o vínculo
+  const conn = await pool.request()
+    .input("tenantId", tenantId)
+    .query(`
+      SELECT TOP 1 cc.ConnectorId
+      FROM omni.ChannelConnector cc
+      JOIN omni.Channel ch ON ch.ChannelId = cc.ChannelId
+      WHERE ch.TenantId = @tenantId AND cc.IsActive = 1 AND cc.Provider = 'WHATSAPP'
+    `);
+
+  if (conn.recordset.length === 0) {
+    throw new Error("Nenhum canal WhatsApp ativo para criar conversa.");
+  }
+  const connectorId = conn.recordset[0].ConnectorId;
+  const dummyChannelId = (await pool.query("SELECT TOP 1 ChannelId FROM omni.Channel WHERE IsActive=1")).recordset[0].ChannelId;
+
+  const title = name || `WhatsApp • ${phone}`;
+
+  // 3. Criar conversa
+  const created = await pool.request()
+    .input("tenantId", tenantId)
+    .input("channelId", dummyChannelId)
+    .input("title", title)
+    .input("connectorId", connectorId)
+    .input("externalUserId", externalUserId)
+    .query(`
+      DECLARE @cid UNIQUEIDENTIFIER = NEWID();
+      INSERT INTO omni.Conversation (ConversationId, TenantId, ChannelId, Title, Kind, Status)
+      VALUES (@cid, @tenantId, @channelId, @title, 'DIRECT', 'OPEN');
+
+      INSERT INTO omni.ExternalThreadMap (TenantId, ConnectorId, ExternalChatId, ExternalUserId, ConversationId)
+      VALUES (@tenantId, @connectorId, @externalUserId, @externalUserId, @cid);
+
+      SELECT @cid AS ConversationId;
+    `);
+
+  return created.recordset[0].ConversationId as string;
+}
