@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { getPool } from "./db.js";
 import { authMw, requireRole } from "./mw.js";
-import { signToken, verifyPassword, assertAgentSeatAvailable, assertTenantActive } from "./auth.js";
+import { signToken, verifyPassword, hashPassword, assertAgentSeatAvailable, assertTenantActive } from "./auth.js";
 import { Orchestrator, TriageBot } from "./agents.js";
 
 import { GtiAdapter } from "./adapters/gti.js";
@@ -21,15 +21,20 @@ import { listTemplates, createTemplate, deleteTemplate } from "./services/templa
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "5mb" }));
+app.use(express.static("public"));
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
 const orch = new Orchestrator([new TriageBot()]);
 
+import { WebChatAdapter } from "./adapters/webchat.js";
+
 const adapters = {
   gti: new GtiAdapter(),
-  official: new OfficialAdapter()
+  official: new OfficialAdapter(),
+  whatsapp: new OfficialAdapter(), // Map classic whatsapp to official
+  webchat: new WebChatAdapter()
 } as const;
 
 // Helper: load connector + channel + tenant
@@ -131,7 +136,7 @@ app.post("/api/webhooks/whatsapp/:provider/:connectorId/*", async (req, res) => 
     const conversationId = await resolveConversationForInbound(inbound, connector.ConnectorId, connector.ChannelId);
     await saveInboundMessage(inbound, conversationId);
 
-    io.to(conversationId).emit("message:new", {
+    io.to(`tenant:${inbound.tenantId}`).emit("message:new", {
       conversationId,
       senderExternalId: inbound.externalUserId,
       text: inbound.text ?? `[${inbound.mediaType}]`,
@@ -161,6 +166,53 @@ app.post("/api/webhooks/whatsapp/:provider/:connectorId/*", async (req, res) => 
     return res.status(200).json({ ok: true, conversationId, decisions });
   } catch (e: any) {
     return res.status(500).json({ error: e?.message ?? "error" });
+  }
+});
+
+// --- Webhook dedicado para WebChat (simplificado) ---
+// POST /api/external/webchat/message
+app.post("/api/external/webchat/message", async (req, res) => {
+  try {
+    // Expected body: { connectorId, senderId, text, ... }
+    // In a real widget, you might not expose connectorId directly but derive it from a token.
+    // For MVP, widget sends connectorId.
+    const { connectorId } = req.body;
+    if (!connectorId) return res.status(400).json({ error: "Missing connectorId" });
+
+    const connector = await loadConnector(connectorId);
+    const adapter = adapters.webchat;
+
+    const inbound = adapter.parseInbound(req.body, connector);
+    if (!inbound) return res.status(400).json({ error: "Invalid payload" });
+
+    const conversationId = await resolveConversationForInbound(inbound, connector.ConnectorId, connector.ChannelId);
+    await saveInboundMessage(inbound, conversationId);
+
+    // Emit to tenant
+    io.to(`tenant:${inbound.tenantId}`).emit("message:new", {
+      conversationId,
+      senderExternalId: inbound.externalUserId,
+      text: inbound.text ?? `[${inbound.mediaType}]`,
+      mediaType: inbound.mediaType,
+      mediaUrl: inbound.mediaUrl,
+      direction: "IN"
+    });
+
+    // Also emit to the conversation room (for the widget if it is connected via socket)
+    // The widget should join the conversation room upon connection.
+    io.to(conversationId).emit("message:new", {
+      conversationId,
+      senderExternalId: inbound.externalUserId,
+      text: inbound.text ?? `[${inbound.mediaType}]`,
+      mediaType: inbound.mediaType,
+      mediaUrl: inbound.mediaUrl,
+      direction: "IN"
+    });
+
+    res.json({ ok: true, conversationId });
+  } catch (e: any) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -208,8 +260,8 @@ app.post("/api/conversations/:id/reply", authMw, async (req, res) => {
     // Salvar mensagem de saída no banco
     await saveOutboundMessage(user.tenantId, conversationId, text);
 
-    // Emitir via Socket.IO para atualização em tempo real
-    io.to(conversationId).emit("message:new", {
+    // Emitir via Socket.IO para atualização em tempo real (Global)
+    io.to(`tenant:${user.tenantId}`).emit("message:new", {
       conversationId,
       senderExternalId: "agent",
       text,
@@ -259,6 +311,17 @@ app.get("/api/conversations", authMw, async (req, res) => {
     return res.json(r.recordset);
   } catch (e: any) {
     return res.status(500).json({ error: e?.message ?? "error" });
+  }
+});
+
+app.delete("/api/conversations/:id", authMw, async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    const { deleteConversation } = await import("./services/conversation.js");
+    await deleteConversation(user.tenantId, req.params.id);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -456,6 +519,42 @@ app.delete("/api/contacts/:id", authMw, async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Profile Update ---
+app.put("/api/profile", authMw, async (req, res) => {
+  // @ts-ignore
+  const user = req.user;
+  const body = z.object({
+    password: z.string().min(6).optional(),
+    avatar: z.string().url().optional().or(z.literal("")),
+  }).parse(req.body);
+
+  const pool = await getPool();
+
+  const updates: string[] = [];
+  const request = pool.request().input("userId", user.userId);
+
+  if (body.password) {
+    const hash = await hashPassword(body.password);
+    updates.push("PasswordHash = @hash");
+    request.input("hash", hash);
+  }
+
+  if (body.avatar !== undefined) {
+    updates.push("Avatar = @avatar");
+    request.input("avatar", body.avatar || null);
+  }
+
+  if (updates.length > 0) {
+    await request.query(`
+      UPDATE omni.[User]
+      SET ${updates.join(", ")}
+      WHERE UserId = @userId
+    `);
+  }
+
+  res.json({ ok: true });
+});
+
 // --- Ticket Status (Resolve/Reopen) ---
 app.post("/api/conversations/:id/status", authMw, async (req, res) => {
   // @ts-ignore
@@ -475,6 +574,225 @@ app.post("/api/conversations/:id/status", authMw, async (req, res) => {
   });
 
   res.json({ ok: true });
+});
+
+// --- Configurações do Tenant (Default Provider, Token, Instance) ---
+app.get("/api/settings", authMw, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    const pool = await getPool();
+
+    // Get Default Provider
+    const t = await pool.request()
+      .input("tenantId", user.tenantId)
+      .query("SELECT DefaultProvider FROM omni.Tenant WHERE TenantId=@tenantId");
+    const defaultProvider = t.recordset[0]?.DefaultProvider || "GTI";
+
+    // Get active connector for this provider to show config
+    const c = await pool.request()
+      .input("tenantId", user.tenantId)
+      .input("provider", defaultProvider)
+      .query(`
+        SELECT TOP 1 cc.ConfigJson
+        FROM omni.ChannelConnector cc
+        JOIN omni.Channel ch ON ch.ChannelId = cc.ChannelId
+        WHERE ch.TenantId=@tenantId AND cc.Provider=@provider AND cc.IsActive=1
+      `);
+
+    let config = {};
+    if (c.recordset.length > 0) {
+      try { config = JSON.parse(c.recordset[0].ConfigJson); } catch { }
+    }
+
+    res.json({ defaultProvider, config });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/settings", authMw, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    const body = z.object({
+      defaultProvider: z.string(),
+      instanceId: z.string().optional(),
+      token: z.string().optional()
+    }).parse(req.body);
+
+    const pool = await getPool();
+
+    // 1. Update Tenant Default Provider
+    await pool.request()
+      .input("tenantId", user.tenantId)
+      .input("provider", body.defaultProvider)
+      .query("UPDATE omni.Tenant SET DefaultProvider=@provider WHERE TenantId=@tenantId");
+
+    // 2. Update/Create Connector for this provider
+    // Logic: Find existing connector for this provider. If exists, update config. If not, create one.
+    // For MVP simplicy, we'll try to find one.
+    const current = await pool.request()
+      .input("tenantId", user.tenantId)
+      .input("provider", body.defaultProvider)
+      .query(`
+        SELECT TOP 1 cc.ConnectorId, cc.ConfigJson
+        FROM omni.ChannelConnector cc
+        JOIN omni.Channel ch ON ch.ChannelId = cc.ChannelId
+        WHERE ch.TenantId=@tenantId AND cc.Provider=@provider AND cc.IsActive=1
+      `);
+
+    let configJson = "{}";
+    let connectorId = "";
+
+    if (current.recordset.length > 0) {
+      connectorId = current.recordset[0].ConnectorId;
+      try {
+        const conf = JSON.parse(current.recordset[0].ConfigJson);
+        // Update fields if provided
+        if (body.instanceId) conf.instance = body.instanceId; // GTI uses 'instance', 'token'
+        if (body.token) conf.token = body.token;
+        // Official uses 'phoneNumberId', 'accessToken' - maybe map differently if provider=OFFICIAL?
+        // User asked specifically for "token e id da instancia", which implies GTI terminology.
+        // If Official, we might map token->accessToken, instance->phoneNumberId.
+        if (body.defaultProvider === 'OFFICIAL') {
+          if (body.token) conf.accessToken = body.token;
+          if (body.instanceId) conf.phoneNumberId = body.instanceId;
+        }
+
+        configJson = JSON.stringify(conf);
+      } catch { }
+    } else {
+      // We'll skip creation and assume user has a connector or will create one.
+    }
+
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/dashboard/stats", authMw, async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    const pool = await getPool();
+
+    // 1. Conversas Abertas
+    const openRes = await pool.request()
+      .input("tenantId", user.tenantId)
+      .query("SELECT COUNT(*) as count FROM omni.Conversation WHERE TenantId=@tenantId AND Status='OPEN'");
+
+    // 2. Conversas Resolvidas (Total)
+    const resolvedRes = await pool.request()
+      .input("tenantId", user.tenantId)
+      .query("SELECT COUNT(*) as count FROM omni.Conversation WHERE TenantId=@tenantId AND Status='RESOLVED'");
+
+    // 3. Filas (Em espera)
+    const queueRes = await pool.request()
+      .input("tenantId", user.tenantId)
+      .query("SELECT COUNT(*) as count FROM omni.Conversation WHERE TenantId=@tenantId AND QueueId IS NOT NULL AND AssignedUserId IS NULL AND Status='OPEN'");
+
+    // 4. Mensagens Hoje
+    const msgsRes = await pool.request()
+      .input("tenantId", user.tenantId)
+      .query(`
+            SELECT COUNT(*) as count 
+            FROM omni.Message 
+            WHERE TenantId=@tenantId 
+            AND CreatedAt >= CAST(GETDATE() AS DATE) 
+            AND CreatedAt < CAST(DATEADD(day, 1, GETDATE()) AS DATE)
+        `);
+
+    res.json({
+      open: openRes.recordset[0].count,
+      resolved: resolvedRes.recordset[0].count,
+      queue: queueRes.recordset[0].count,
+      messagesToday: msgsRes.recordset[0].count
+    });
+
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Reatribuir conector de uma conversa (útil se mudou de provider) ---
+app.post("/api/conversations/:id/reassign-connector", authMw, requireRole("ADMIN"), async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    const conversationId = req.params.id;
+
+    const pool = await getPool();
+
+    // 1. Get Tenant Default Provider
+    const t = await pool.request()
+      .input("tenantId", user.tenantId)
+      .query("SELECT DefaultProvider FROM omni.Tenant WHERE TenantId=@tenantId");
+    const defaultProvider = t.recordset[0]?.DefaultProvider || "GTI";
+
+    // 2. Find active connector for this provider
+    const c = await pool.request()
+      .input("tenantId", user.tenantId)
+      .input("provider", defaultProvider)
+      .query(`
+        SELECT TOP 1 cc.ConnectorId
+        FROM omni.ChannelConnector cc
+        JOIN omni.Channel ch ON ch.ChannelId = cc.ChannelId
+        WHERE ch.TenantId=@tenantId AND cc.Provider=@provider AND cc.IsActive=1
+      `);
+
+    if (c.recordset.length === 0) return res.status(400).json({ error: "Nenhum conector ativo para o provider padrão" });
+    const newConnectorId = c.recordset[0].ConnectorId;
+
+    // 3. Update ExternalThreadMap
+    await pool.request()
+      .input("conversationId", conversationId)
+      .input("tenantId", user.tenantId)
+      .input("newConnectorId", newConnectorId)
+      .query(`
+        UPDATE omni.ExternalThreadMap
+        SET ConnectorId = @newConnectorId
+        WHERE ConversationId = @conversationId AND TenantId = @tenantId
+      `);
+
+    res.json({ ok: true, provider: defaultProvider });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Template Management (HSM) ---
+app.get("/api/templates", authMw, async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    const items = await listTemplates(user.tenantId);
+    res.json(items);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/templates", authMw, async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    const body = z.object({
+      name: z.string().min(1),
+      content: z.string().min(1),
+      variables: z.array(z.string()).optional()
+    }).parse(req.body);
+
+    await createTemplate(user.tenantId, body.name, body.content, body.variables || []);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete("/api/templates/:id", authMw, async (req, res) => {
+  try {
+    const user = (req as any).user as { tenantId: string };
+    await deleteTemplate(user.tenantId, req.params.id);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 server.listen(process.env.PORT ?? 3001, () => {

@@ -1,53 +1,92 @@
-# OmniChat (dev scaffold)
-Starter kit para um sistema omnichannel (WhatsApp não-oficial + oficial), multi-agente, tickets/escalonamento, respostas rápidas e automações.
-**Ambiente alvo inicial:** SQL Server Express/Dev (local). Depois migra para nuvem sem refazer.
+# OmniChat - Sistema de Atendimento Multi-Canal
 
-## 0) Pré-requisitos
-- Node.js 20+
-- SQL Server Express (ou Docker com SQL Server Developer)
-- (Opcional) Docker Desktop
+Bem-vindo ao OmniChat! Este é um sistema completo de atendimento ao cliente com suporte a múltiplos canais (WhatsApp, WebChat), gestão de filas, respostas rápidas e dashboard de métricas.
 
-## 1) Banco (SQL Server)
-Crie um banco chamado `OmniChatDev` e rode os scripts na ordem:
-1. `db/01-schema.sql`
-2. `db/02-canned-and-automation.sql`
-3. (Opcional) `db/03-seed.sql`
+## 🚀 Funcionalidades Entregues
 
-> Dica: no MVP, não armazene mídia pesada no DB. Guarde anexos fora (S3/Blob/Files) e salve apenas URL/metadata.
+### 1. Multi-Canal
+- **WebChat Embeddable**: Widget pronto para ser colocado em qualquer site.
+- **WhatsApp Oficial (Cloud API)**: Adapter implementado para integração direta com a Meta.
+- **GTI (uazapi)**: Suporte legado a API não-oficial.
 
-## 2) Backend
+### 2. Gestão de Conversas
+- **Filas de Atendimento**: Organize conversas por departamentos.
+- **Respostas Rápidas**: Atalhos (`/atalho`) para mensagens frequentes.
+- **Mídia**: Suporte a envio e recebimento de Imagem, Áudio (com Player), Vídeo e Documentos.
+- **Deleção**: Possibilidade de apagar conversas e contatos (Lixeira).
+
+### 3. Produtividade & UI
+- **Dashboard**: Métricas em tempo real de conversas abertas, resolvidas e volume de mensagens.
+- **Notificações Globais**: Toasts interativos ("Ver") quando chega mensagem em outra aba.
+- **Modo Dark/Light**: Interface limpa e responsiva.
+
+---
+
+## 📦 Instalação e Uso
+
+### Pré-requisitos
+- Node.js 18+
+- SQL Server Express (Local ou Docker)
+
+### 1. Configurar Banco de Dados
+1. Crie um banco chamado `OmniChatDev`.
+2. Execute os scripts na pasta `backend/db/` na ordem:
+   - `01-schema.sql` (Tabelas)
+   - `02-canned-and-automation.sql` (Dados iniciais)
+   - `03-seed.sql` (Opcional, usuários de teste)
+
+### 2. Backend
+No terminal, entre na pasta `backend`:
 ```bash
 cd backend
-cp .env.example .env
-npm i
+npm install
+# Configure o .env (copie do .env.example e ajuste DB_USER/DB_PASS)
 npm run dev
 ```
+O servidor rodará em `http://localhost:3001`.
 
-## 3) Frontend
+### 3. Frontend
+Em outro terminal, entre na pasta `frontend`:
 ```bash
 cd frontend
-npm i
+npm install
 npm run dev
 ```
+Acesse a aplicação em `http://localhost:5173`.
+Login padrão (se usou seed): `admin@omni.chat` / `123456`.
 
-## 4) Teste rápido (sem WhatsApp)
-- Abra o frontend e envie mensagens; o backend publica via Socket.IO (modo demo).
-- Depois substitua o modo demo por chamadas REST com JWT.
+---
 
-## 5) WhatsApp GTI (pendente de payload real)
-A integração GTI está estruturada em:
-- `backend/src/adapters/gti.ts`
-- Webhook: `POST /api/webhooks/whatsapp/gti/:connectorId`
+## 📖 Guia de Uso Rápido
 
-Para finalizar o adapter, coloque em `docs/vendors/gti/`:
-- `sample-webhook-text.json`
-- `sample-webhook-media.json`
-- colecione/exporte no Postman: `gti-collection-v2.1.json` e `gti-environment.json`
+### Acessar o WebChat
+1. Certifique-se que o backend está rodando.
+2. Acesse `http://localhost:3001/widget.html`.
+3. Envie uma mensagem como visitante.
+4. No OmniChat (frontend), veja a mensagem chegar e responda!
 
-Veja: `docs/vendors/gti/README-gti.md`.
+### Configurar WhatsApp Oficial
+1. Vá em **Configurações** (⚙️) no menu lateral.
+2. Em **Adapter Padrão**, selecione `OFFICIAL`.
+3. Insira o `Phone ID` e o `Access Token` da Meta Developers.
+4. Salve. O sistema agora usará a API Oficial para envios.
 
-## 6) Definição de pronto (fase 1)
-- Mensagem entra via webhook GTI -> aparece no UI em tempo real -> resposta enviada via API GTI.
-- ExternalThreadMap cria/resolve conversas automaticamente.
-- Respostas rápidas e sugestões por automação aparecem no painel.
+### Dashboard
+Clique no ícone **📊** para ver o resumo da operação (Conversas em aberto, Resolvidas, etc).
 
+---
+
+## 🏗️ Estrutura do Projeto
+
+- **backend/**: API Node.js + Express + Socket.IO.
+  - `src/adapters/`: Lógica de conexão com canais (GTI, Official, WebChat).
+  - `src/services/`: Regras de negócio.
+  - `public/`: Arquivos estáticos (Widget).
+- **frontend/**: React + Vite + TypeScript.
+  - `src/components/`: Componentes UI reutilizáveis.
+  - `src/App.tsx`: Lógica principal e rotas.
+
+---
+
+**Desenvolvido como MVP para Escala.**
+Pronto para deploy e uso!

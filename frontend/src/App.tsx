@@ -7,6 +7,8 @@ import { Toast } from "./components/Toast";
 import { EmojiPicker } from "./components/EmojiPicker";
 import { TemplateModal } from "./components/TemplateModal";
 import { AudioPlayer } from "./components/AudioPlayer";
+import { Settings } from "./Settings";
+import { Dashboard as DashboardView } from "./Dashboard";
 
 const API = "http://localhost:3001";
 const socket = io(API);
@@ -103,33 +105,45 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
-  const [view, setView] = useState<"CHAT" | "CANNED" | "QUEUES" | "CONTACTS">("CHAT");
+  const [view, setView] = useState<"CHAT" | "CANNED" | "QUEUES" | "CONTACTS" | "SETTINGS" | "DASHBOARD">("CHAT");
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info"; action?: { label: string; onClick: () => void } } | null>(null);
 
-  function showToast(message: string, type: "success" | "error" | "info" = "info") {
-    setToast({ message, type });
+  function showToast(message: string, type: "success" | "error" | "info" = "info", action?: { label: string; onClick: () => void }) {
+    setToast({ message, type, action });
   }
 
   const inputs = useRef<HTMLInputElement>(null);
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
   // Extract tenantId from JWT
-  const tenantId = JSON.parse(atob(token.split(".")[1])).tenantId;
+  const decoded = parseJwt(token);
+  const tenantId = decoded?.tenantId;
 
   // Load conversations
   useEffect(() => {
+    if (!tenantId) return;
     fetch(`${API}/api/conversations`, { headers })
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) {
+          onLogout();
+          throw new Error("Unauthorized");
+        }
+        return r.json();
+      })
       .then((data) => {
-        setConversations(data);
-        if (data.length > 0 && !selectedConversationId) setSelectedConversationId(data[0].ConversationId);
-        setSelectedConversationId(data[0].ConversationId);
-      });
+        if (Array.isArray(data)) {
+          setConversations(data);
+          if (data.length > 0 && !selectedConversationId) setSelectedConversationId(data[0].ConversationId);
+        } else {
+          console.error("API Error:", data);
+        }
+      })
+      .catch(console.error);
 
     // Join tenant room for sidebar updates
     socket.emit("tenant:join", tenantId);
@@ -138,8 +152,9 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
       fetch(`${API}/api/conversations`, { headers })
         .then((r) => r.json())
         .then((data) => {
-          setConversations(data);
-        });
+          if (Array.isArray(data)) setConversations(data);
+        })
+        .catch(console.error);
     };
     socket.on("conversation:updated", onConvUpdated);
 
@@ -150,8 +165,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   }, [token, tenantId, selectedConversationId]);
 
   // Queue/Filter Logic
-  // @ts-ignore
-  const userId = JSON.parse(atob(token.split(".")[1])).userId;
+  const userId = decoded?.userId;
 
   const myChats = conversations.filter(c => c.Status === "OPEN" && ((c as any).AssignedUserId === userId || (!(c as any).QueueId && !(c as any).AssignedUserId)));
   const queueChats = conversations.filter(c => c.Status === "OPEN" && (c as any).QueueId && !(c as any).AssignedUserId);
@@ -172,25 +186,39 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
     socket.emit("conversation:join", selectedConversationId);
 
+    // Global message listener handled here because we need `selectedConversationId` state
+    // But since this effect re-runs when `selectedConversationId` changes, it's fine.
     const onNew = (m: any) => {
-      if (m.conversationId !== selectedConversationId) return;
-      setMessages((prev) => [
-        ...prev,
-        {
-          MessageId: crypto.randomUUID(),
-          Body: m.text,
-          Direction: m.direction ?? "IN",
-          SenderExternalId: m.senderExternalId ?? "",
-          MediaType: m.mediaType,
-          MediaUrl: m.mediaUrl,
-          CreatedAt: new Date().toISOString(),
-        },
-      ]);
-      // Update sidebar preview
+      // 1. If message is for THIS conversation, append it
+      if (m.conversationId === selectedConversationId) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            MessageId: crypto.randomUUID(),
+            Body: m.text,
+            Direction: m.direction ?? "IN",
+            SenderExternalId: m.senderExternalId ?? "",
+            MediaType: m.mediaType,
+            MediaUrl: m.mediaUrl,
+            CreatedAt: new Date().toISOString(),
+          },
+        ]);
+      } else {
+        // 2. If message is for ANOTHER conversation, show toast
+        showToast(`Nova mensagem de ${m.senderExternalId}`, "success", {
+          label: "Ver",
+          onClick: () => {
+            setSelectedConversationId(m.conversationId);
+            setView("CHAT");
+          }
+        });
+      }
+
+      // 3. Always update sidebar preview
       setConversations((prev) =>
         prev.map((c) =>
           c.ConversationId === m.conversationId
-            ? { ...c, LastMessageAt: new Date().toISOString() }
+            ? { ...c, LastMessageAt: new Date().toISOString(), UnreadCount: c.ConversationId === selectedConversationId ? 0 : (c.UnreadCount || 0) + 1 }
             : c
         )
       );
@@ -340,6 +368,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         <div className="sidebar-header">
           <h2>Conversas</h2>
           <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <button onClick={() => setView("DASHBOARD")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2em" }} title="Dashboard">📊</button>
             <button onClick={() => setView("CONTACTS")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2em" }} title="Contatos">📖</button>
             <button onClick={() => setView("QUEUES")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2em" }} title="Gestão de Filas">👥</button>
             <button onClick={() => setView("CANNED")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.2em" }} title="Respostas Rápidas">⚡</button>
@@ -387,6 +416,16 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             </div>
           )}
         </div>
+
+        {/* Sidebar Footer */}
+        <div style={{ padding: 10, borderTop: "1px solid var(--border)", display: "flex", gap: 10 }}>
+          <button onClick={() => setView("SETTINGS")} style={{ flex: 1, padding: 10, background: "var(--bg-primary)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", cursor: "pointer" }}>
+            ⚙️ Config
+          </button>
+          <button onClick={onLogout} style={{ width: 40, padding: 10, background: "var(--danger)", border: "none", borderRadius: 8, color: "white", cursor: "pointer" }} title="Sair">
+            🚪
+          </button>
+        </div>
       </div>
 
       {/* Chat */}
@@ -410,6 +449,10 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
               }
             }}
           />
+        ) : view === "SETTINGS" ? (
+          <Settings token={token} onBack={() => setView("CHAT")} />
+        ) : view === "DASHBOARD" ? (
+          <DashboardView token={token} onBack={() => setView("CHAT")} />
         ) : view === "QUEUES" ? (
           <QueueSettings onBack={() => setView("CHAT")} />
         ) : view === "CANNED" ? (
@@ -432,6 +475,27 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                 </div>
               </div>
               <div className="actions" style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={async () => {
+                    if (!confirm("Tem certeza que deseja apagar esta conversa e todo o histórico?")) return;
+                    try {
+                      await fetch(`${API}/api/conversations/${selectedConversationId}`, { method: "DELETE", headers });
+                      showToast("Conversa apagada", "success");
+                      // Refresh
+                      const res = await fetch(`${API}/api/conversations`, { headers });
+                      const data = await res.json();
+                      setConversations(data);
+                      setSelectedConversationId(null);
+                    } catch (e: any) {
+                      showToast("Erro: " + e.message, "error");
+                    }
+                  }}
+                  className="icon-btn"
+                  title="Apagar Conversa"
+                  style={{ color: "#ea4335" }}
+                >
+                  🗑️
+                </button>
                 {selectedConversation.Status === "OPEN" && (
                   <button onClick={() => handleStatus("RESOLVED")} style={{ padding: "5px 10px", background: "#f0f2f5", border: "none", color: "green", borderRadius: 5, cursor: "pointer" }} title="Resolver">
                     ✅ Resolver
@@ -460,6 +524,28 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                     Devolver
                   </button>
                 )}
+
+                {/* Reassign Connector (Admin only, hidden but useful for debug/migration) */}
+                <button
+                  onClick={async () => {
+                    if (!confirm("Deseja re-conectar esta conversa ao Provider Padrão do sistema?")) return;
+                    try {
+                      const res = await fetch(`${API}/api/conversations/${selectedConversationId}/reassign-connector`, {
+                        method: "POST", headers
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        alert("Conectado ao provider: " + data.provider);
+                      } else {
+                        alert("Erro: " + data.error);
+                      }
+                    } catch (e: any) { alert("Erro: " + e.message); }
+                  }}
+                  style={{ padding: "5px 10px", background: "#f0f2f5", border: "none", color: "#666", borderRadius: 5, cursor: "pointer", marginLeft: 10, fontSize: "0.8rem" }}
+                  title="Trocar para Provider Padrão"
+                >
+                  ⚡
+                </button>
               </div>
             </div>
 
@@ -535,7 +621,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
               </button>
             )}
 
-            <div className="chat-input" style={{ position: "relative" }}>
+            <div className="chat-input-bar" style={{ position: "relative" }}>
               {showEmojiPicker && (
                 <div style={{ position: "absolute", bottom: "60px", left: "0" }}>
                   <EmojiPicker onSelect={(emoji) => setText(prev => prev + emoji)} onClose={() => setShowEmojiPicker(false)} />
@@ -578,28 +664,58 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
           </>
         )}
       </div>
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-      {showTemplateModal && token && (
-        <TemplateModal
-          token={token}
-          onClose={() => setShowTemplateModal(false)}
-          onSend={(txt) => sendReply(txt)}
-        />
-      )}
-    </div>
+      {
+        toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )
+      }
+      {
+        showTemplateModal && token && (
+          <TemplateModal
+            token={token}
+            onClose={() => setShowTemplateModal(false)}
+            onSend={(txt) => sendReply(txt)}
+          />
+        )
+      }
+    </div >
   );
+}
+
+// Helper to safely parse JWT
+function parseJwt(token: string) {
+  try {
+    return JSON.parse(atob(token.split(".")[1]));
+  } catch (e) {
+    return null;
+  }
 }
 
 // ─── App Root ─────────────────────────────────────
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
 
+  // Validate token on load
+  useEffect(() => {
+    if (token) {
+      const decoded = parseJwt(token);
+      if (!decoded || !decoded.tenantId) {
+        console.error("Invalid token, logging out");
+        localStorage.removeItem("token");
+        setToken(null);
+      }
+    }
+  }, [token]);
+
   if (!token) return <LoginScreen onLogin={setToken} />;
+
+  // Verify again before rendering Dashboard to prevent crash
+  const decoded = parseJwt(token);
+  if (!decoded) return null; // Wait for useEffect to clear it
+
   return <Dashboard token={token} onLogout={() => { localStorage.removeItem("token"); setToken(null); }} />;
 }

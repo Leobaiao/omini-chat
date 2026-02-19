@@ -7,9 +7,10 @@ export type ToastProps = {
     type?: ToastType;
     onClose: () => void;
     duration?: number;
+    action?: { label: string; onClick: () => void };
 };
 
-export function Toast({ message, type = "info", onClose, duration = 3000 }: ToastProps) {
+export function Toast({ message, type = "info", onClose, duration = 3000, action }: ToastProps) {
     useEffect(() => {
         const timer = setTimeout(onClose, duration);
         return () => clearTimeout(timer);
@@ -29,9 +30,29 @@ export function Toast({ message, type = "info", onClose, duration = 3000 }: Toas
             borderRadius: 8,
             zIndex: 1000,
             boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            animation: "fadeIn 0.3s ease-out"
+            animation: "fadeIn 0.3s ease-out",
+            display: "flex",
+            alignItems: "center",
+            gap: 15
         }}>
-            {message}
+            <span>{message}</span>
+            {action && (
+                <button
+                    onClick={() => { action.onClick(); onClose(); }}
+                    style={{
+                        background: "rgba(255,255,255,0.2)",
+                        border: "none",
+                        borderRadius: 4,
+                        padding: "5px 10px",
+                        color: "white",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                        fontSize: "0.9em"
+                    }}
+                >
+                    {action.label}
+                </button>
+            )}
         </div>
     );
 }

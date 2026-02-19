@@ -106,17 +106,25 @@ export async function findOrCreateConversation(tenantId: string, phone: string, 
   if (found.recordset.length > 0) return found.recordset[0].ConversationId as string;
 
   // 2. Se não achou, precisamos de um conector para criar o vínculo
+  // Fetch tenant default provider
+  const tenant = await pool.request()
+    .input("tenantId", tenantId)
+    .query("SELECT DefaultProvider FROM omni.Tenant WHERE TenantId=@tenantId");
+  const defaultProvider = tenant.recordset[0]?.DefaultProvider || 'GTI';
+
   const conn = await pool.request()
     .input("tenantId", tenantId)
+    .input("provider", defaultProvider)
     .query(`
       SELECT TOP 1 cc.ConnectorId
       FROM omni.ChannelConnector cc
       JOIN omni.Channel ch ON ch.ChannelId = cc.ChannelId
-      WHERE ch.TenantId = @tenantId AND cc.IsActive = 1 AND cc.Provider = 'WHATSAPP'
+      WHERE ch.TenantId = @tenantId AND cc.IsActive = 1
+      ORDER BY CASE WHEN cc.Provider = @provider THEN 0 ELSE 1 END, cc.ConnectorId
     `);
 
   if (conn.recordset.length === 0) {
-    throw new Error("Nenhum canal WhatsApp ativo para criar conversa.");
+    throw new Error(`Nenhum canal ativo para criar conversa (Provider preferido: ${defaultProvider}).`);
   }
   const connectorId = conn.recordset[0].ConnectorId;
   const dummyChannelId = (await pool.query("SELECT TOP 1 ChannelId FROM omni.Channel WHERE IsActive=1")).recordset[0].ChannelId;
@@ -142,4 +150,18 @@ export async function findOrCreateConversation(tenantId: string, phone: string, 
     `);
 
   return created.recordset[0].ConversationId as string;
+}
+
+export async function deleteConversation(tenantId: string, conversationId: string) {
+  const pool = await getPool();
+  // Transaction? For MVP, sequential deletes.
+  // Dependencies: Message, ExternalThreadMap
+  await pool.request()
+    .input("tenantId", tenantId)
+    .input("conversationId", conversationId)
+    .query(`
+      DELETE FROM omni.Message WHERE ConversationId = @conversationId AND TenantId = @tenantId;
+      DELETE FROM omni.ExternalThreadMap WHERE ConversationId = @conversationId AND TenantId = @tenantId;
+      DELETE FROM omni.Conversation WHERE ConversationId = @conversationId AND TenantId = @tenantId;
+    `);
 }

@@ -49,6 +49,18 @@ async function run() {
         console.log("Connector exists.");
     }
 
+    // Check WebChat Connector
+    const wc = await pool.query(`SELECT TOP 1 ConnectorId FROM omni.ChannelConnector WHERE ChannelId='${channelId}' AND Provider='WEBCHAT'`);
+    if (wc.recordset.length === 0) {
+        console.log("Creating dummy WebChat Connector...");
+        await pool.query(`
+            INSERT INTO omni.ChannelConnector (ConnectorId, ChannelId, Provider, ConfigJson, IsActive)
+            VALUES (NEWID(), '${channelId}', 'WEBCHAT', '{}', 1);
+        `);
+    } else {
+        console.log("WebChat Connector exists:", wc.recordset[0].ConnectorId);
+    }
+
     console.log("✅ Done seeding.");
     process.exit(0);
 }
