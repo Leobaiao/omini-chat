@@ -1,13 +1,9 @@
 import { useState, useEffect } from "react";
+import { Plus, Trash2, ArrowLeft, MessageSquare, Zap } from "lucide-react";
 
-type CannedResponse = {
-    CannedResponseId: string;
-    Shortcut: string;
-    Content: string;
-    Title: string;
-};
+import type { CannedResponse } from "../../shared/types";
 
-const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+import { api } from "./lib/api";
 
 export function CannedResponses({ onBack }: { onBack: () => void }) {
     const [items, setItems] = useState<CannedResponse[]>([]);
@@ -16,87 +12,131 @@ export function CannedResponses({ onBack }: { onBack: () => void }) {
     const [newContent, setNewContent] = useState("");
     const [newTitle, setNewTitle] = useState("");
 
-    const token = localStorage.getItem("token");
-
     useEffect(() => {
-        fetch(`${API}/api/canned-responses`, {
-            headers: { Authorization: `Bearer ${token}` }
-        })
-            .then((res) => res.json())
-            .then(setItems)
+        api.get<CannedResponse[]>("/api/canned-responses")
+            .then((res) => setItems(res.data))
             .catch(console.error);
     }, []);
 
     const handleSave = async () => {
         if (!newShortcut || !newContent || !newTitle) return alert("Preencha todos os campos");
 
-        const res = await fetch(`${API}/api/canned-responses`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ shortcut: newShortcut, content: newContent, title: newTitle }),
-        });
+        try {
+            await api.post("/api/canned-responses", { shortcut: newShortcut, content: newContent, title: newTitle });
 
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            return alert("Erro ao salvar: " + (err.error || res.statusText));
+            // reload
+            const listRes = await api.get<CannedResponse[]>("/api/canned-responses");
+            setItems(listRes.data);
+            setView("LIST");
+            setNewShortcut("");
+            setNewContent("");
+            setNewTitle("");
+        } catch (error: any) {
+            const err = error.response?.data || {};
+            alert("Erro ao salvar: " + (err.error || error.message));
         }
-
-        // reload
-        const listRes = await fetch(`${API}/api/canned-responses`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        setItems(await listRes.json());
-        setView("LIST");
-        setNewShortcut("");
-        setNewContent("");
-        setNewTitle("");
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Deletar?")) return;
-        await fetch(`${API}/api/canned-responses/${id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        setItems(items.filter((i) => i.CannedResponseId !== id));
+        try {
+            await api.delete(`/api/canned-responses/${id}`);
+            setItems(items.filter((i) => i.CannedResponseId !== id));
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     return (
-        <div className="main-area" style={{ padding: 20 }}>
-            <div className="header">
-                <button onClick={onBack} style={{ marginRight: 10, background: "none", border: "none", color: "inherit", cursor: "pointer" }}>← Voltar</button>
-                <h2>Respostas Rápidas</h2>
-                {view === "LIST" && <button onClick={() => setView("NEW")} style={{ marginLeft: "auto" }}>+ Nova</button>}
+        <div className="main-area" style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-primary)", height: "100%" }}>
+            <div className="chat-header">
+                <div className="info" style={{ display: "flex", alignItems: "center", gap: 15 }}>
+                    {view === "LIST" ? (
+                        <>
+                            <button onClick={onBack} className="icon-btn" title="Voltar"><ArrowLeft size={20} /></button>
+                            <h2>Respostas Rápidas</h2>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={() => setView("LIST")} className="icon-btn" title="Voltar"><ArrowLeft size={20} /></button>
+                            <h2>Nova Resposta Rápida</h2>
+                        </>
+                    )}
+                </div>
+                {view === "LIST" && (
+                    <button className="btn btn-primary" onClick={() => setView("NEW")} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Plus size={16} /> Nova Resposta Rápida
+                    </button>
+                )}
             </div>
 
-            {view === "LIST" && (
-                <div style={{ display: "grid", gap: 10, marginTop: 20 }}>
-                    {items.map((item) => (
-                        <div key={item.CannedResponseId} style={{ background: "#202c33", padding: 10, borderRadius: 8, display: "flex", justifyContent: "space-between" }}>
-                            <div>
-                                <div style={{ fontWeight: "bold" }}>/{item.Shortcut} - {item.Title}</div>
-                                <div style={{ opacity: 0.7, fontSize: "0.9em" }}>{item.Content}</div>
-                            </div>
-                            <button onClick={() => handleDelete(item.CannedResponseId)} style={{ background: "#d32f2f", color: "white", border: "none", borderRadius: 4, padding: "5px 10px", cursor: "pointer" }}>Trash</button>
+            <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+                {view === "LIST" && (
+                    <div style={{ maxWidth: 800, margin: "0 auto" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {items.length === 0 && (
+                                <div className="empty-state" style={{ marginTop: 40 }}>
+                                    <MessageSquare size={48} opacity={0.5} />
+                                    <p>Nenhuma resposta rápida cadastrada.</p>
+                                </div>
+                            )}
+                            {items.map((item) => (
+                                <div key={item.CannedResponseId} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", padding: 16, borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center", transition: "transform 0.2s, box-shadow 0.2s" }} onMouseEnter={e => e.currentTarget.style.transform = "translateY(-2px)"} onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+                                        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(0, 168, 132, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>
+                                            <Zap size={24} />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontWeight: 600, fontSize: "15px", color: "var(--text-primary)" }}>
+                                                <span style={{ color: "var(--accent)", marginRight: 4 }}>/</span>{item.Shortcut} - {item.Title}
+                                            </div>
+                                            <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: 4, whiteSpace: "pre-wrap" }}>{item.Content}</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <button onClick={() => handleDelete(item.CannedResponseId)} className="icon-btn" style={{ padding: 8, color: "var(--danger)" }} title="Excluir">
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
-            )}
-
-            {view === "NEW" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 400, marginTop: 20 }}>
-                    <input placeholder="Título (ex: Saudação)" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} style={{ padding: 10, borderRadius: 5, border: "none" }} />
-                    <input placeholder="Atalho (ex: oi)" value={newShortcut} onChange={(e) => setNewShortcut(e.target.value)} style={{ padding: 10, borderRadius: 5, border: "none" }} />
-                    <textarea placeholder="Conteúdo da mensagem..." value={newContent} onChange={(e) => setNewContent(e.target.value)} style={{ padding: 10, borderRadius: 5, border: "none", height: 100 }} />
-                    <div style={{ display: "flex", gap: 10 }}>
-                        <button onClick={handleSave} style={{ flex: 1, padding: 10 }}>Salvar</button>
-                        <button onClick={() => setView("LIST")} style={{ flex: 1, padding: 10, background: "#555" }}>Cancelar</button>
                     </div>
-                </div>
-            )}
+                )}
+
+                {view === "NEW" && (
+                    <div className="login-card" style={{ margin: "40px auto", width: "100%", maxWidth: 500 }}>
+                        <h1 style={{ marginBottom: 20 }}>Nova Resposta Rápida</h1>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                            <div className="field">
+                                <label>Título (ex: Saudação)</label>
+                                <input placeholder="Um nome pra identificar a mensagem..." value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+                            </div>
+                            <div className="field">
+                                <label>Atalho (ex: oi)</label>
+                                <div style={{ position: "relative" }}>
+                                    <span style={{ position: "absolute", left: 14, top: 12, color: "var(--text-secondary)" }}>/</span>
+                                    <input placeholder="A palavra chave..." value={newShortcut} onChange={(e) => setNewShortcut(e.target.value)} style={{ paddingLeft: 24 }} />
+                                </div>
+                            </div>
+                            <div className="field">
+                                <label>Conteúdo da mensagem</label>
+                                <textarea
+                                    placeholder="O texto que será enviado..."
+                                    value={newContent}
+                                    onChange={(e) => setNewContent(e.target.value)}
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", resize: "vertical", minHeight: 120 }}
+                                />
+                            </div>
+
+                            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                                <button onClick={() => setView("LIST")} className="btn btn-ghost" style={{ flex: 1 }}>Cancelar</button>
+                                <button onClick={handleSave} className="btn btn-primary" style={{ flex: 1 }}>Salvar Resposta Rápida</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

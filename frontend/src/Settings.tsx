@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+import { api } from "./lib/api";
 
 interface Props {
     token: string;
@@ -15,22 +15,40 @@ export function Settings({ token, onBack }: Props) {
     const [defaultProvider, setDefaultProvider] = useState("GTI");
     const [instanceId, setInstanceId] = useState("");
     const [tokenVal, setTokenVal] = useState("");
+    const [instances, setInstances] = useState<any[]>([]);
+    const [selectedConnectorId, setSelectedConnectorId] = useState("");
 
-    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+
 
     React.useEffect(() => {
         // Load configurations
-        fetch(`${API}/api/settings`, { headers }).then(async r => {
-            if (r.ok) {
-                const data = await r.json();
-                setDefaultProvider(data.defaultProvider || "GTI");
-                if (data.config) {
-                    setInstanceId(data.config.instance || data.config.phoneNumberId || "");
-                    setTokenVal(data.config.token || data.config.accessToken || "");
-                }
+        api.get("/api/settings").then(res => {
+            const data = res.data;
+            setDefaultProvider(data.defaultProvider || "GTI");
+            if (data.instances && Array.isArray(data.instances)) {
+                setInstances(data.instances);
+                const active = data.instances.find((i: any) => i.Provider === data.defaultProvider);
+                if (active) setSelectedConnectorId(active.ConnectorId);
+                else if (data.instances.length > 0) setSelectedConnectorId(data.instances[0].ConnectorId);
             }
+            if (data.config) {
+                setInstanceId(data.config.instance || data.config.phoneNumberId || "");
+                setTokenVal(data.config.token || data.config.accessToken || data.config.apiKey || "");
+            }
+        }).catch(err => {
+            console.error("Erro ao carregar configurações:", err);
         });
     }, []);
+
+    function handleInstanceChange(cId: string) {
+        setSelectedConnectorId(cId);
+        const inst = instances.find(i => i.ConnectorId === cId);
+        if (inst) {
+            setDefaultProvider(inst.Provider);
+            setInstanceId(inst.config?.instance || inst.config?.phoneNumberId || "");
+            setTokenVal(inst.config?.token || inst.config?.accessToken || inst.config?.apiKey || "");
+        }
+    }
 
     async function handleSave() {
         setLoading(true);
@@ -38,24 +56,22 @@ export function Settings({ token, onBack }: Props) {
         try {
             // 1. Profile update
             if (password || avatar) {
-                const res = await fetch(`${API}/api/profile`, {
-                    method: "PUT", headers,
-                    body: JSON.stringify({ password: password || undefined, avatar: avatar || undefined })
-                });
-                if (!res.ok) throw new Error((await res.json()).error);
+                await api.put("/api/profile", { password: password || undefined, avatar: avatar || undefined });
             }
 
             // 2. Settings update
-            const res2 = await fetch(`${API}/api/settings`, {
-                method: "PUT", headers,
-                body: JSON.stringify({ defaultProvider, instanceId, token: tokenVal })
+            await api.put("/api/settings", {
+                defaultProvider,
+                connectorId: selectedConnectorId,
+                instanceId,
+                token: tokenVal
             });
-            if (!res2.ok) throw new Error((await res2.json()).error);
 
             setMsg("✅ Configurações atualizadas com sucesso!");
             setPassword("");
         } catch (err: any) {
-            setMsg("❌ Erro: " + err.message);
+            const errorMsg = err.response?.data?.error || err.message;
+            setMsg("❌ Erro: " + errorMsg);
         } finally {
             setLoading(false);
         }
@@ -97,50 +113,63 @@ export function Settings({ token, onBack }: Props) {
                 <hr style={{ border: "0", borderTop: "1px solid var(--border)", marginBottom: 25 }} />
 
                 <h3 style={{ fontSize: 16, marginBottom: 15, color: "var(--text-primary)" }}>Integração (Admin)</h3>
-                <div style={{ marginBottom: 15 }}>
-                    <label style={{ display: "block", marginBottom: 5, color: "var(--text-secondary)" }}>Adapter Padrão</label>
-                    <select
-                        value={defaultProvider}
-                        onChange={e => setDefaultProvider(e.target.value)}
-                        style={{ width: "100%", padding: 10, borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
-                    >
-                        <option value="GTI">GTI (uazapi)</option>
-                        <option value="OFFICIAL">Official WhatsApp Cloud</option>
-                        <option value="ZAPI">Z-API</option>
-                        <option value="WARNING">WARNING (Debug)</option>
-                    </select>
-                </div>
 
-                <div style={{ marginBottom: 15 }}>
-                    <label style={{ display: "block", marginBottom: 5, color: "var(--text-secondary)" }}>Instance ID / Phone ID</label>
-                    <input
-                        type="text"
-                        value={instanceId}
-                        onChange={e => setInstanceId(e.target.value)}
-                        placeholder="Ex: instance_12345"
-                        style={{ width: "100%", padding: 10, borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
-                    />
-                </div>
+                {instances.length === 0 ? (
+                    <div style={{ padding: 15, background: "rgba(234, 67, 53, 0.1)", color: "#ea4335", borderRadius: 8, marginBottom: 15 }}>
+                        Nenhuma instância de conexão encontrada para essa empresa. Contate o Super Admin.
+                    </div>
+                ) : (
+                    <>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={{ display: "block", marginBottom: 5, color: "var(--text-secondary)" }}>Instância Padrão</label>
+                            <select
+                                value={selectedConnectorId}
+                                onChange={e => handleInstanceChange(e.target.value)}
+                                style={{ width: "100%", padding: 10, borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                            >
+                                {instances.map(inst => (
+                                    <option key={inst.ConnectorId} value={inst.ConnectorId}>
+                                        {inst.ChannelName || 'Sem Nome'} ({inst.Provider})
+                                    </option>
+                                ))}
+                            </select>
+                            <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: 5 }}>
+                                Provider Mapeado: <strong>{defaultProvider}</strong>
+                            </div>
+                        </div>
 
-                <div style={{ marginBottom: 15 }}>
-                    <label style={{ display: "block", marginBottom: 5, color: "var(--text-secondary)" }}>Token / Access Token</label>
-                    <input
-                        type="password"
-                        value={tokenVal}
-                        onChange={e => setTokenVal(e.target.value)}
-                        placeholder="Ex: abc-123-xyz"
-                        style={{ width: "100%", padding: 10, borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
-                    />
-                </div>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={{ display: "block", marginBottom: 5, color: "var(--text-secondary)" }}>Instance ID / Phone ID</label>
+                            <input
+                                type="text"
+                                value={instanceId}
+                                onChange={e => setInstanceId(e.target.value)}
+                                placeholder="Ex: instance_12345"
+                                style={{ width: "100%", padding: 10, borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                            />
+                        </div>
 
-                <button
-                    onClick={handleSave}
-                    disabled={loading}
-                    className="btn btn-primary"
-                    style={{ width: "100%" }}
-                >
-                    {loading ? "Salvando..." : "Salvar Alterações"}
-                </button>
+                        <div style={{ marginBottom: 15 }}>
+                            <label style={{ display: "block", marginBottom: 5, color: "var(--text-secondary)" }}>Token / Access Token</label>
+                            <input
+                                type="password"
+                                value={tokenVal}
+                                onChange={e => setTokenVal(e.target.value)}
+                                placeholder="Ex: abc-123-xyz"
+                                style={{ width: "100%", padding: 10, borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                            />
+                        </div>
+
+                        <button
+                            onClick={handleSave}
+                            disabled={loading}
+                            className="btn btn-primary"
+                            style={{ width: "100%" }}
+                        >
+                            {loading ? "Salvando..." : "Salvar Alterações"}
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     );

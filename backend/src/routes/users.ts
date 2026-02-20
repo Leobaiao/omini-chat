@@ -1,0 +1,196 @@
+import { Router } from "express";
+import { z } from "zod";
+import sql from "mssql";
+import { getPool } from "../db.js";
+import { authMw, requireRole } from "../mw.js";
+import { hashPassword } from "../auth.js";
+import { validateBody } from "../middleware/validateMw.js";
+
+const router = Router();
+router.use(authMw);
+
+// GET /api/users is accessible to AGENTs (e.g. for listing chat transfer targets)
+router.get("/", async (req, res, next) => {
+    try {
+        const u = (req as any).user;
+        const pool = await getPool();
+        const r = await pool.request()
+            .input("tenantId", u.tenantId)
+            .query(`
+        SELECT u.UserId, u.Email, u.Role, u.IsActive, a.Name as AgentName
+        FROM omni.[User] u
+        LEFT JOIN omni.Agent a ON a.UserId = u.UserId
+        WHERE u.TenantId = @tenantId AND u.Role != 'SUPERADMIN'
+        ORDER BY u.CreatedAt DESC
+      `);
+        res.json(r.recordset);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// All routes below require ADMIN role
+router.post("/", requireRole("ADMIN"), validateBody(z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    password: z.string().min(6),
+    role: z.enum(["ADMIN", "AGENT"]).default("AGENT")
+})), async (req, res, next) => {
+    try {
+        const u = (req as any).user;
+        const body = req.body;
+
+        const pool = await getPool();
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            const hash = await hashPassword(body.password);
+            const rUser = await transaction.request()
+                .input("tenantId", u.tenantId)
+                .input("email", body.email)
+                .input("hash", hash)
+                .input("role", body.role)
+                .query(`
+          INSERT INTO omni.[User] (TenantId, Email, PasswordHash, Role)
+          OUTPUT inserted.UserId
+          VALUES (@tenantId, @email, @hash, @role)
+        `);
+            const newUserId = rUser.recordset[0].UserId;
+
+            await transaction.request()
+                .input("tenantId", u.tenantId)
+                .input("userId", newUserId)
+                .input("name", body.name)
+                .query(`
+          INSERT INTO omni.Agent (TenantId, UserId, Kind, Name)
+          VALUES (@tenantId, @userId, 'HUMAN', @name)
+        `);
+
+            await transaction.commit();
+            res.json({ ok: true, userId: newUserId });
+        } catch (err) {
+            await transaction.rollback();
+            throw err;
+        }
+    } catch (e: any) {
+        if (e.code === 'EREQUEST' && e.message.includes('UK_User_Email')) {
+            return res.status(400).json({ error: "Email já cadastrado." });
+        }
+        next(e);
+    }
+});
+
+router.put("/:id", requireRole("ADMIN"), validateBody(z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    password: z.string().optional(),
+    role: z.enum(["ADMIN", "AGENT"])
+})), async (req, res, next) => {
+    try {
+        const u = (req as any).user;
+        const body = req.body;
+        const pool = await getPool();
+
+        // Prevent modifying SUPERADMINs
+        const check = await pool.request()
+            .input("id", req.params.id)
+            .input("tenantId", u.tenantId)
+            .query("SELECT Role FROM omni.[User] WHERE UserId=@id AND TenantId=@tenantId");
+
+        if (check.recordset.length === 0) return res.status(404).json({ error: "User not found" });
+        if (check.recordset[0].Role === 'SUPERADMIN') return res.status(403).json({ error: "Cannot modify SUPERADMIN accounts" });
+
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+
+        try {
+            if (body.password) {
+                const hash = await hashPassword(body.password);
+                await transaction.request()
+                    .input("tenantId", u.tenantId)
+                    .input("id", req.params.id)
+                    .input("email", body.email)
+                    .input("role", body.role)
+                    .input("hash", hash)
+                    .query(`
+                        UPDATE omni.[User] 
+                        SET Email=@email, Role=@role, PasswordHash=@hash 
+                        WHERE UserId=@id AND TenantId=@tenantId
+                    `);
+            } else {
+                await transaction.request()
+                    .input("tenantId", u.tenantId)
+                    .input("id", req.params.id)
+                    .input("email", body.email)
+                    .input("role", body.role)
+                    .query(`
+                        UPDATE omni.[User] 
+                        SET Email=@email, Role=@role 
+                        WHERE UserId=@id AND TenantId=@tenantId
+                    `);
+            }
+
+            await transaction.request()
+                .input("tenantId", u.tenantId)
+                .input("id", req.params.id)
+                .input("name", body.name)
+                .query(`
+                    UPDATE omni.Agent 
+                    SET Name=@name 
+                    WHERE UserId=@id AND TenantId=@tenantId
+                `);
+
+            await transaction.commit();
+            res.json({ ok: true });
+        } catch (err) {
+            await transaction.rollback();
+            throw err;
+        }
+    } catch (e: any) {
+        if (e.code === 'EREQUEST' && e.message.includes('UK_User_Email')) {
+            return res.status(400).json({ error: "Email já cadastrado por outro usuário." });
+        }
+        next(e);
+    }
+});
+
+router.delete("/:id", requireRole("ADMIN"), async (req, res, next) => {
+    try {
+        const u = (req as any).user;
+        const pool = await getPool();
+
+        // Prevent deleting SUPERADMINs
+        const check = await pool.request()
+            .input("id", req.params.id)
+            .input("tenantId", u.tenantId)
+            .query("SELECT Role FROM omni.[User] WHERE UserId=@id AND TenantId=@tenantId");
+
+        if (check.recordset.length === 0) return res.status(404).json({ error: "User not found" });
+        if (check.recordset[0].Role === 'SUPERADMIN') return res.status(403).json({ error: "Cannot modify SUPERADMIN accounts" });
+
+        const transaction = new sql.Transaction(pool);
+        await transaction.begin();
+        try {
+            await transaction.request()
+                .input("id", req.params.id)
+                .input("tenantId", u.tenantId)
+                .query("UPDATE omni.[User] SET IsActive=0 WHERE UserId=@id AND TenantId=@tenantId");
+
+            await transaction.request()
+                .input("id", req.params.id)
+                .input("tenantId", u.tenantId)
+                .query("UPDATE omni.Agent SET IsActive=0 WHERE UserId=@id AND TenantId=@tenantId");
+
+            await transaction.commit();
+            res.json({ ok: true });
+        } catch (err) {
+            await transaction.rollback();
+            throw err;
+        }
+    } catch (error) {
+        next(error);
+    }
+});
+
+export default router;

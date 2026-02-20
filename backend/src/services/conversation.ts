@@ -82,15 +82,10 @@ export async function saveOutboundMessage(tenantId: string, conversationId: stri
 /**
  * Busca conversa existente por telefone ou cria nova usando o primeiro conector WhatsApp ativo.
  */
-export async function findOrCreateConversation(tenantId: string, phone: string, name?: string) {
+export async function findOrCreateConversation(tenantId: string, phone: string, name?: string, assignedUserId?: string) {
   const pool = await getPool();
 
   // 1. Tentar achar via ExternalThreadMap
-  // O formato do phone no DB geralmente é 5511999998888@s.whatsapp.net ou 5511...
-  // Vamos assumir que o 'phone' vem limpo (apenas numeros) e o suffix é do provider.
-  // Por simplificação do MVP, vamos tentar match exato no ExternalUserId OU like.
-
-  // Vamos formatar para o padrão do WhatsApp se não tiver @
   let externalUserId = phone;
   if (!externalUserId.includes("@")) externalUserId += "@s.whatsapp.net";
 
@@ -103,20 +98,36 @@ export async function findOrCreateConversation(tenantId: string, phone: string, 
       WHERE TenantId=@tenantId AND ExternalUserId=@externalUserId
     `);
 
-  if (found.recordset.length > 0) return found.recordset[0].ConversationId as string;
+  if (found.recordset.length > 0) {
+    const cid = found.recordset[0].ConversationId;
+
+    // Se a conversa ja existir mas não tiver dono, e tivermos um assignedUserId, vamos atribuir agora
+    if (assignedUserId) {
+      await pool.request()
+        .input("cid", cid)
+        .input("userId", assignedUserId)
+        .input("tenantId", tenantId)
+        .query(`
+          UPDATE omni.Conversation 
+          SET AssignedUserId = @userId 
+          WHERE ConversationId = @cid AND TenantId = @tenantId AND AssignedUserId IS NULL
+        `);
+    }
+
+    return cid as string;
+  }
 
   // 2. Se não achou, precisamos de um conector para criar o vínculo
-  // Fetch tenant default provider
   const tenant = await pool.request()
     .input("tenantId", tenantId)
     .query("SELECT DefaultProvider FROM omni.Tenant WHERE TenantId=@tenantId");
-  const defaultProvider = tenant.recordset[0]?.DefaultProvider || 'GTI';
+  const defaultProvider = (tenant.recordset[0]?.DefaultProvider || 'GTI').toUpperCase();
 
   const conn = await pool.request()
     .input("tenantId", tenantId)
     .input("provider", defaultProvider)
     .query(`
-      SELECT TOP 1 cc.ConnectorId
+      SELECT TOP 1 cc.ConnectorId, ch.ChannelId
       FROM omni.ChannelConnector cc
       JOIN omni.Channel ch ON ch.ChannelId = cc.ChannelId
       WHERE ch.TenantId = @tenantId AND cc.IsActive = 1
@@ -127,21 +138,22 @@ export async function findOrCreateConversation(tenantId: string, phone: string, 
     throw new Error(`Nenhum canal ativo para criar conversa (Provider preferido: ${defaultProvider}).`);
   }
   const connectorId = conn.recordset[0].ConnectorId;
-  const dummyChannelId = (await pool.query("SELECT TOP 1 ChannelId FROM omni.Channel WHERE IsActive=1")).recordset[0].ChannelId;
+  const channelId = conn.recordset[0].ChannelId;
 
   const title = name || `WhatsApp • ${phone}`;
 
   // 3. Criar conversa
   const created = await pool.request()
     .input("tenantId", tenantId)
-    .input("channelId", dummyChannelId)
+    .input("channelId", channelId)
     .input("title", title)
     .input("connectorId", connectorId)
     .input("externalUserId", externalUserId)
+    .input("userId", assignedUserId || null)
     .query(`
       DECLARE @cid UNIQUEIDENTIFIER = NEWID();
-      INSERT INTO omni.Conversation (ConversationId, TenantId, ChannelId, Title, Kind, Status)
-      VALUES (@cid, @tenantId, @channelId, @title, 'DIRECT', 'OPEN');
+      INSERT INTO omni.Conversation (ConversationId, TenantId, ChannelId, Title, Kind, Status, AssignedUserId)
+      VALUES (@cid, @tenantId, @channelId, @title, 'DIRECT', 'OPEN', @userId);
 
       INSERT INTO omni.ExternalThreadMap (TenantId, ConnectorId, ExternalChatId, ExternalUserId, ConversationId)
       VALUES (@tenantId, @connectorId, @externalUserId, @externalUserId, @cid);

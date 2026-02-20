@@ -1,84 +1,125 @@
 import { useState, useEffect } from "react";
+import { ArrowLeft, Plus, Users, Trash2 } from "lucide-react";
 
-type Queue = {
-    QueueId: string;
-    Name: string;
-    IsActive: boolean;
-};
+import type { Queue } from "../../shared/types";
 
-const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+import { api } from "./lib/api";
 
 export function QueueSettings({ onBack }: { onBack: () => void }) {
     const [items, setItems] = useState<Queue[]>([]);
     const [newName, setNewName] = useState("");
-    const token = localStorage.getItem("token");
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        fetch(`${API}/api/queues`, {
-            headers: { Authorization: `Bearer ${token}` }
-        })
-            .then((res) => res.json())
-            .then(setItems)
-            .catch(console.error);
+        fetchQueues();
     }, []);
 
-    const handleSave = async () => {
+    const fetchQueues = () => {
+        api.get<Queue[]>("/api/queues")
+            .then((res) => setItems(res.data))
+            .catch(console.error);
+    }
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!newName.trim()) return;
-        const res = await fetch(`${API}/api/queues`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ name: newName }),
-        });
-
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            return alert("Erro ao criar fila: " + (err.error || res.statusText));
+        setLoading(true);
+        try {
+            await api.post("/api/queues", { name: newName });
+            fetchQueues();
+            setNewName("");
+        } catch (error: any) {
+            const err = error.response?.data || {};
+            alert("Erro ao criar fila: " + (err.error || error.message));
+            console.error(error);
+        } finally {
+            setLoading(false);
         }
-
-        // reload
-        const listRes = await fetch(`${API}/api/queues`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        setItems(await listRes.json());
-        setNewName("");
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm("Deletar fila?")) return;
-        await fetch(`${API}/api/queues/${id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        setItems(items.filter((i) => i.QueueId !== id));
+    const handleDelete = async (id: string, currentName: string) => {
+        if (!confirm(`Deletar a fila "${currentName}"? Conversas não resolvidas ficarão sem fila.`)) return;
+        try {
+            await api.delete(`/api/queues/${id}`);
+            setItems(items.filter((i) => i.QueueId !== id));
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     return (
-        <div className="main-area" style={{ padding: 20 }}>
-            <div className="header">
-                <button onClick={onBack} style={{ marginRight: 10, background: "none", border: "none", color: "inherit", cursor: "pointer" }}>← Voltar</button>
-                <h2>Gestão de Filas</h2>
+        <div style={{ padding: 30, color: "var(--text-primary)", overflowY: "auto", flex: 1 }}>
+
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 30 }}>
+                <button onClick={onBack} title="Voltar" className="btn icon-btn" style={{ marginRight: 15, background: "transparent", border: "none" }}>
+                    <ArrowLeft size={24} color="var(--text-secondary)" />
+                </button>
+                <div>
+                    <h1 style={{ margin: 0, fontSize: "1.8rem", display: "flex", alignItems: "center", gap: 10 }}>
+                        <Users size={28} color="#00a884" /> Gestão de Filas
+                    </h1>
+                    <p style={{ opacity: 0.7, margin: "5px 0 0 0", fontSize: "0.95rem" }}>
+                        Crie departamentos (como Vendas, Suporte) para organizar o atendimento.
+                    </p>
+                </div>
             </div>
 
-            <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
-                <input
-                    placeholder="Nome da Fila (ex: Suporte)"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                    style={{ padding: 10, borderRadius: 5, border: "none", flex: 1 }}
-                />
-                <button onClick={handleSave} style={{ padding: "10px 20px" }}>Criar</button>
-            </div>
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
+                {/* Formulário Criar Nova Fila */}
+                <div className="login-card" style={{ flex: "1 1 300px", margin: 0 }}>
+                    <h3 style={{ margin: "0 0 15px 0", color: "var(--text-primary)" }}>Nova Fila</h3>
+                    <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+                        <div className="field">
+                            <label>Nome do Departamento</label>
+                            <input
+                                placeholder="ex: Suporte Técnico"
+                                value={newName}
+                                onChange={e => setNewName(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <button type="submit" className="btn btn-primary" disabled={loading || !newName.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                            <Plus size={18} /> {loading ? "Criando..." : "Criar Fila"}
+                        </button>
+                    </form>
+                </div>
 
-            <div style={{ display: "grid", gap: 10, marginTop: 20 }}>
-                {items.map((item) => (
-                    <div key={item.QueueId} style={{ background: "#202c33", padding: 15, borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ fontWeight: "bold" }}>{item.Name}</div>
-                        <button onClick={() => handleDelete(item.QueueId)} style={{ background: "#d32f2f", color: "white", border: "none", borderRadius: 4, padding: "5px 10px", cursor: "pointer" }}>Inativar</button>
-                    </div>
-                ))}
+                {/* Lista de Filas */}
+                <div style={{ flex: "2 1 400px", display: "flex", flexDirection: "column", gap: 15 }}>
+                    {items.length === 0 && (
+                        <div style={{ padding: 30, textAlign: "center", background: "var(--bg-secondary)", borderRadius: 12, border: "1px dashed var(--border)", color: "var(--text-secondary)" }}>
+                            Nenhuma fila cadastrada ainda.
+                        </div>
+                    )}
+                    {items.map((item) => (
+                        <div key={item.QueueId} style={{
+                            background: "var(--bg-secondary)",
+                            padding: "15px 20px",
+                            borderRadius: 12,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                            borderLeft: "4px solid #00a884"
+                        }}>
+                            <div>
+                                <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "var(--text-primary)" }}>{item.Name}</div>
+                                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: 4 }}>
+                                    Status: {item.IsActive ? "Ativa" : "Inativa"}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => handleDelete(item.QueueId, item.Name)}
+                                className="icon-btn"
+                                title="Excluir Fila"
+                                style={{ color: "#ea4335" }}
+                            >
+                                <Trash2 size={20} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

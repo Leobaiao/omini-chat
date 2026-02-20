@@ -72,6 +72,9 @@ export class GtiAdapter implements ChannelAdapter {
   }
 
   async sendText(connector: any, to: string, text: string): Promise<void> {
+    if (!connector.ConfigJson) {
+      throw new Error(`Configuração do conector GTI (${connector.ConnectorId}) está vazia.`);
+    }
     const cfg = JSON.parse(connector.ConfigJson);
     // BaseUrl real da GTI/uazapi
     const baseUrl = cfg.baseUrl ?? "https://api.gtiapi.workers.dev";
@@ -81,7 +84,7 @@ export class GtiAdapter implements ChannelAdapter {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "token": cfg.token
+        "token": cfg.token || cfg.apiKey
       },
       body: JSON.stringify({
         instance: cfg.instance,
@@ -102,5 +105,47 @@ export class GtiAdapter implements ChannelAdapter {
     // TODO: implementar quando soubermos o endpoint correto do menu na GTI/uazapi
     void baseUrl; void to; void title; void options;
     throw new Error("GTI sendMenu() não implementado: importar endpoint/headers/body da doc GTI.");
+  }
+
+  async setWebhook(connector: any, options: {
+    url: string;
+    events?: string[];
+    excludeMessages?: string[];
+    addUrlEvents?: boolean;
+    addUrlTypesMessages?: boolean;
+  }): Promise<void> {
+    const cfg = JSON.parse(connector.ConfigJson);
+    const baseUrl = cfg.baseUrl ?? "https://api.gtiapi.workers.dev";
+    const url = `${baseUrl}/webhook`;
+
+    const payload = {
+      enabled: true,
+      url: options.url,
+      events: options.events || [
+        "connection", "history", "messages", "messages_update",
+        "call", "contacts", "presence", "groups", "labels",
+        "chats", "chat_labels", "blocks", "leads"
+      ],
+      excludeMessages: options.excludeMessages || [
+        "wasSentByApi", "wasNotSentByApi", "fromMeYes", "fromMeNo", "isGroupYes", "IsGroupNo"
+      ],
+      addUrlEvents: options.addUrlEvents ?? true,
+      addUrlTypesMessages: options.addUrlTypesMessages ?? true,
+      action: "add"
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "token": cfg.token || cfg.apiKey
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`GTI setWebhook() falhou: ${response.status} - ${errBody}`);
+    }
   }
 }

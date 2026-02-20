@@ -8,14 +8,13 @@ type Template = {
 };
 
 type TemplateModalProps = {
-    token: string;
     onClose: () => void;
     onSend: (text: string) => void;
 };
 
-const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+import { api } from "../lib/api";
 
-export function TemplateModal({ token, onClose, onSend }: TemplateModalProps) {
+export function TemplateModal({ onClose, onSend }: TemplateModalProps) {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [view, setView] = useState<"SELECT" | "MANAGE">("SELECT");
     const [loading, setLoading] = useState(false);
@@ -31,16 +30,13 @@ export function TemplateModal({ token, onClose, onSend }: TemplateModalProps) {
 
     useEffect(() => {
         fetchTemplates();
-    }, [token]);
+    }, []);
 
     async function fetchTemplates() {
         setLoading(true);
         try {
-            const res = await fetch(`${API}/api/templates`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const data = await res.json();
-            setTemplates(data);
+            const res = await api.get<Template[]>("/api/templates");
+            setTemplates(res.data);
         } catch (err) {
             console.error(err);
         } finally {
@@ -55,11 +51,7 @@ export function TemplateModal({ token, onClose, onSend }: TemplateModalProps) {
             const vars = newContent.match(/{{[^{}]+}}/g) || [];
             const cleanVars = vars.map(v => v.replace(/{{|}}/g, ""));
 
-            await fetch(`${API}/api/templates`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ name: newName, content: newContent, variables: cleanVars })
-            });
+            await api.post("/api/templates", { name: newName, content: newContent, variables: cleanVars });
             setNewName("");
             setNewContent("");
             fetchTemplates();
@@ -71,10 +63,7 @@ export function TemplateModal({ token, onClose, onSend }: TemplateModalProps) {
 
     async function handleDelete(id: string) {
         if (!confirm("Tem certeza?")) return;
-        await fetch(`${API}/api/templates/${id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` }
-        });
+        await api.delete(`/api/templates/${id}`);
         fetchTemplates();
     }
 

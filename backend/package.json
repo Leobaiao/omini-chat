@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "db:reset": "node dist/scripts/reset-db.js",
-    "db:seed": "node dist/scripts/seed-channels.js"
+    "start": "node dist/backend/src/index.js",
+    "db:reset": "node dist/backend/src/scripts/reset-db.js",
+    "db:seed": "node dist/backend/src/scripts/seed-channels.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

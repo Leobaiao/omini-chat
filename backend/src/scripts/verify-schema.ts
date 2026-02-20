@@ -9,7 +9,7 @@ async function verify() {
       FROM INFORMATION_SCHEMA.COLUMNS 
       WHERE TABLE_NAME = 'Tenant' AND TABLE_SCHEMA = 'omni'
     `);
-        console.log("Columns in omni.Tenant:", result.recordset.map(r => r.COLUMN_NAME));
+        console.log("Columns in omni.Tenant:", result.recordset.map((r: any) => r.COLUMN_NAME));
     } catch (err) {
         console.error("Verification failed:", err);
     } finally {

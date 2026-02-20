@@ -1,0 +1,301 @@
+import { Router } from "express";
+import { z } from "zod";
+import { getPool } from "../db.js";
+import { authMw } from "../mw.js";
+import { validateBody } from "../middleware/validateMw.js";
+import { resolveConversationForInbound, saveInboundMessage, saveOutboundMessage, findOrCreateConversation, deleteConversation } from "../services/conversation.js";
+import { assignConversation } from "../services/queue.js";
+
+const router = Router();
+router.use(authMw);
+
+// Helper para validar se o usuário tem acesso à conversa
+async function checkConversationAccess(user: any, conversationId: string) {
+    if (user.role === 'ADMIN' || user.role === 'SUPERADMIN') return true;
+
+    const pool = await getPool();
+    const r = await pool.request()
+        .input("tenantId", user.tenantId)
+        .input("conversationId", conversationId)
+        .query("SELECT AssignedUserId FROM omni.Conversation WHERE ConversationId = @conversationId AND TenantId = @tenantId");
+
+    if (r.recordset.length === 0) return false;
+    const ownerId = r.recordset[0].AssignedUserId;
+
+    // Acesso permitido se for o dono OU se estiver sem dono (na fila)
+    return ownerId === null || ownerId === user.userId;
+}
+
+router.get("/", async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        const pool = await getPool();
+
+        // Se for AGENTE, vê apenas as dele OU unassigned (em fila)
+        let filterClause = "WHERE c.TenantId = @tenantId";
+        if (user.role === 'AGENT') {
+            filterClause += " AND (c.AssignedUserId = @userId OR c.AssignedUserId IS NULL)";
+        }
+
+        const r = await pool.request()
+            .input("tenantId", user.tenantId)
+            .input("userId", user.userId)
+            .query(`
+        SELECT c.ConversationId, c.Title, c.Status, c.Kind, c.LastMessageAt, c.QueueId, c.AssignedUserId,
+               etm.ExternalUserId,
+               q.Name AS QueueName,
+               ISNULL((
+                 SELECT COUNT(*) FROM omni.Message m
+                 WHERE m.ConversationId = c.ConversationId
+                   AND m.Direction = 'IN'
+                   AND m.CreatedAt > ISNULL((
+                     SELECT MAX(m2.CreatedAt) FROM omni.Message m2
+                     WHERE m2.ConversationId = c.ConversationId AND m2.Direction = 'OUT'
+                   ), '1900-01-01')
+               ), 0) AS UnreadCount
+        FROM omni.Conversation c
+        LEFT JOIN omni.ExternalThreadMap etm ON etm.ConversationId = c.ConversationId
+        LEFT JOIN omni.Queue q ON q.QueueId = c.QueueId
+        ${filterClause}
+        ORDER BY c.LastMessageAt DESC
+      `);
+        res.json(r.recordset);
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post("/", validateBody(z.object({
+    phone: z.string().min(10),
+    name: z.string().optional()
+})), async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        const { phone, name } = req.body;
+        // Passa o userId para auto-atribuição imediata se for um agente iniciando o chat
+        const conversationId = await findOrCreateConversation(user.tenantId, phone, name, user.userId);
+        res.json({ ok: true, conversationId });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.delete("/:id", async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        await deleteConversation(user.tenantId, req.params.id);
+        res.json({ ok: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.get("/:id/messages", async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        const conversationId = req.params.id;
+
+        if (!(await checkConversationAccess(user, conversationId))) {
+            return res.status(403).json({ error: "Você não tem permissão para acessar esta conversa." });
+        }
+
+        const pool = await getPool();
+        const r = await pool.request()
+            .input("conversationId", conversationId)
+            .input("tenantId", user.tenantId)
+            .query(`
+        SELECT MessageId, Body, Direction, SenderExternalId, MediaType, MediaUrl, Status, CreatedAt
+        FROM omni.Message
+        WHERE ConversationId = @conversationId AND TenantId = @tenantId
+        ORDER BY CreatedAt ASC
+      `);
+        res.json(r.recordset);
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post("/:id/reply", validateBody(z.object({ text: z.string().min(1) })), async (req, res, next) => {
+    try {
+        const conversationId = req.params.id;
+        const { text } = req.body;
+        const user = (req as any).user;
+
+        if (!(await checkConversationAccess(user, conversationId))) {
+            return res.status(403).json({ error: "Você não tem permissão para responder nesta conversa." });
+        }
+
+        const pool = await getPool();
+        const r = await pool.request()
+            .input("conversationId", conversationId)
+            .input("tenantId", user.tenantId)
+            .query(`
+        SELECT
+          etm.ExternalUserId,
+          etm.ConnectorId,
+          cc.Provider,
+          cc.ConfigJson
+        FROM omni.ExternalThreadMap etm
+        JOIN omni.ChannelConnector cc ON cc.ConnectorId = etm.ConnectorId
+        WHERE etm.ConversationId = @conversationId
+          AND etm.TenantId = @tenantId
+      `);
+
+        if (r.recordset.length === 0) {
+            return res.status(404).json({ error: "Conversa não encontrada ou sem canal externo" });
+        }
+
+        const { ExternalUserId, Provider, ConnectorId, ConfigJson } = r.recordset[0];
+        const provider = String(Provider).toLowerCase();
+
+        // We must pass adapter dependencies differently, since they were in index.ts
+        // For now we will grab adapters from req.app if needed or import statically.
+        // The cleanest is to use the App's injected adapters, or a separate module.
+        const adapters = req.app.get("adapters");
+        const adapter = adapters[provider];
+
+        if (!adapter) {
+            return res.status(400).json({ error: `Provider "${Provider}" não suportado` });
+        }
+
+        const connector = { ConnectorId, Provider, ConfigJson };
+        await adapter.sendText(connector, ExternalUserId, text);
+        await saveOutboundMessage(user.tenantId, conversationId, text);
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`tenant:${user.tenantId}`).emit("message:new", {
+                conversationId,
+                senderExternalId: "agent",
+                text,
+                direction: "OUT"
+            });
+            io.to(`tenant:${user.tenantId}`).emit("conversation:updated", {
+                conversationId,
+                lastMessage: text,
+                direction: "OUT",
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        res.json({ ok: true, conversationId });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post("/:id/status", validateBody(z.object({ status: z.enum(["OPEN", "RESOLVED", "PENDING"]) })), async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        const { status } = req.body;
+        const pool = await getPool();
+
+        await pool.request()
+            .input("tenantId", user.tenantId)
+            .input("conversationId", req.params.id)
+            .input("status", status)
+            .query("UPDATE omni.Conversation SET Status = @status WHERE TenantId = @tenantId AND ConversationId = @conversationId");
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`tenant:${user.tenantId}`).emit("conversation:updated", {
+                conversationId: req.params.id,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        res.json({ ok: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post("/:id/assign", validateBody(z.object({
+    queueId: z.string().nullable().optional(),
+    userId: z.string().nullable().optional()
+})), async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        const { queueId, userId } = req.body;
+        await assignConversation(user.tenantId, req.params.id, queueId || null, userId || null);
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`tenant:${user.tenantId}`).emit("conversation:updated", {
+                conversationId: req.params.id,
+                timestamp: new Date().toISOString()
+            });
+        }
+        res.json({ ok: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.post("/:id/reassign-connector", async (req, res, next) => {
+    try {
+        // Admin requirement handled internally or we could map requireRole middleware
+        if ((req as any).user.role !== 'ADMIN' && (req as any).user.role !== 'SUPERADMIN') {
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
+        const user = (req as any).user;
+        const conversationId = req.params.id;
+        const pool = await getPool();
+
+        const t = await pool.request()
+            .input("tenantId", user.tenantId)
+            .query("SELECT DefaultProvider FROM omni.Tenant WHERE TenantId=@tenantId");
+        const defaultProvider = t.recordset[0]?.DefaultProvider || "GTI";
+
+        const c = await pool.request()
+            .input("tenantId", user.tenantId)
+            .input("provider", defaultProvider)
+            .query(`
+        SELECT TOP 1 cc.ConnectorId
+        FROM omni.ChannelConnector cc
+        JOIN omni.Channel ch ON ch.ChannelId = cc.ChannelId
+        WHERE ch.TenantId=@tenantId AND cc.Provider=@provider AND cc.IsActive=1
+      `);
+
+        if (c.recordset.length === 0) return res.status(400).json({ error: "Nenhum conector ativo para o provider padrão" });
+        const newConnectorId = c.recordset[0].ConnectorId;
+
+        await pool.request()
+            .input("conversationId", conversationId)
+            .input("tenantId", user.tenantId)
+            .input("newConnectorId", newConnectorId)
+            .query(`
+        UPDATE omni.ExternalThreadMap
+        SET ConnectorId = @newConnectorId
+        WHERE ConversationId = @conversationId AND TenantId = @tenantId
+      `);
+
+        res.json({ ok: true, provider: defaultProvider });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Demo internal messages
+router.post("/demo/:id/messages", validateBody(z.object({ text: z.string().min(1) })), async (req, res, next) => {
+    try {
+        const conversationId = req.params.id;
+        const { text } = req.body;
+        const io = req.app.get("io");
+
+        if (io) {
+            io.to(conversationId).emit("message:new", {
+                conversationId,
+                senderExternalId: "demo",
+                text,
+                direction: "INTERNAL"
+            });
+        }
+        res.json({ ok: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
+export default router;

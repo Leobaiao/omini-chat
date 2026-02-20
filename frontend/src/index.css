@@ -418,6 +418,68 @@ body,
   font-weight: 600;
 }
 
+/* Layout Additions */
+.sidebar-main {
+  width: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-main .brand {
+  margin-bottom: 40px;
+  font-size: 1.5rem;
+}
+
+.sidebar-main .nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  flex: 1;
+}
+
+.sidebar-main .footer-items {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.nav-icon-wrapper {
+  cursor: pointer;
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.nav-icon-wrapper:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.nav-icon-wrapper.active {
+  background: rgba(0, 168, 132, 0.2);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+.conversation-list-panel {
+  width: 350px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from {
@@ -434,20 +496,60 @@ body,
 /* Mobile Responsive */
 .mobile-back-btn {
   display: none;
-  /* Hidden on desktop */
 }
 
 @media (max-width: 768px) {
-  .sidebar {
+  .app-layout {
+    flex-direction: column;
+  }
+  
+  /* Bottom navigation for mobile instead of left sidebar */
+  .sidebar-main {
     width: 100%;
-    height: 100%;
+    height: 60px;
+    flex-direction: row;
+    padding: 0 10px;
     border-right: none;
+    border-top: 1px solid var(--border);
+    order: 3; /* Move to bottom */
+    justify-content: space-around;
+  }
+
+  .sidebar-main .brand,
+  .sidebar-main .footer-items {
+    display: none; /* Hide brand and footer on mobile nav */
+  }
+
+  .sidebar-main .nav-items {
+    flex-direction: row;
+    gap: 15px;
+    justify-content: space-around;
+    width: 100%;
+  }
+
+  .nav-icon-wrapper {
+    padding: 8px;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+  }
+
+  .nav-icon-wrapper.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+
+  .conversation-list-panel {
+    width: 100%;
+    height: calc(100vh - 60px); /* Fill space above nav */
+    border-right: none;
+    order: 1;
   }
 
   .chat-area {
     display: none;
     width: 100%;
-    height: 100%;
+    height: calc(100vh - 60px);
+    order: 2;
   }
 
   .mobile-back-btn {
@@ -462,16 +564,20 @@ body,
   }
 
   /* When chat is open on mobile */
-  .app-layout.mobile-detail-open .sidebar {
+  .app-layout.mobile-detail-open .conversation-list-panel {
+    display: none;
+  }
+  
+  .app-layout.mobile-detail-open .sidebar-main {
     display: none;
   }
 
   .app-layout.mobile-detail-open .chat-area {
     display: flex;
+    height: 100vh; /* Full screen when chat is open */
   }
 
   .bubble {
     max-width: 85%;
-    /* Wider bubbles on mobile */
   }
 }
