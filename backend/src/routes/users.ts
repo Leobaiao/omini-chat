@@ -155,32 +155,37 @@ router.put("/:id", requireRole("ADMIN"), validateBody(z.object({
     }
 });
 
-router.delete("/:id", requireRole("ADMIN"), async (req, res, next) => {
+router.put("/:id/status", requireRole("ADMIN"), validateBody(z.object({ isActive: z.boolean() })), async (req, res, next) => {
     try {
         const u = (req as any).user;
+        const userId = req.params.id;
+        const { isActive } = req.body;
         const pool = await getPool();
 
-        // Prevent deleting SUPERADMINs
+        // Prevent modifying SUPERADMINs
         const check = await pool.request()
-            .input("id", req.params.id)
+            .input("id", userId)
             .input("tenantId", u.tenantId)
             .query("SELECT Role FROM omni.[User] WHERE UserId=@id AND TenantId=@tenantId");
 
         if (check.recordset.length === 0) return res.status(404).json({ error: "User not found" });
-        if (check.recordset[0].Role === 'SUPERADMIN') return res.status(403).json({ error: "Cannot modify SUPERADMIN accounts" });
+        if (check.recordset[0].Role === 'SUPERADMIN') return res.status(403).json({ error: "Access denied" });
 
         const transaction = new sql.Transaction(pool);
         await transaction.begin();
+
         try {
             await transaction.request()
-                .input("id", req.params.id)
+                .input("id", userId)
                 .input("tenantId", u.tenantId)
-                .query("UPDATE omni.[User] SET IsActive=0 WHERE UserId=@id AND TenantId=@tenantId");
+                .input("active", isActive ? 1 : 0)
+                .query("UPDATE omni.[User] SET IsActive=@active WHERE UserId=@id AND TenantId=@tenantId");
 
             await transaction.request()
-                .input("id", req.params.id)
+                .input("id", userId)
                 .input("tenantId", u.tenantId)
-                .query("UPDATE omni.Agent SET IsActive=0 WHERE UserId=@id AND TenantId=@tenantId");
+                .input("active", isActive ? 1 : 0)
+                .query("UPDATE omni.Agent SET IsActive=@active WHERE UserId=@id AND TenantId=@tenantId");
 
             await transaction.commit();
             res.json({ ok: true });

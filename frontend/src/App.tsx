@@ -184,11 +184,9 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
           <NavIcon icon={MessageSquare} label="Conversas" active={isChat} onClick={() => navigate("/chat")} />
           <NavIcon icon={Ticket} label="Chamados" active={false} onClick={() => showToast("Módulo de Tickets em breve!", "info")} />
           <NavIcon icon={BookOpen} label="Respostas" active={currentPath.startsWith("/canned")} onClick={() => navigate("/canned")} />
+          <NavIcon icon={UsersIcon} label="Equipe" active={currentPath.startsWith("/users")} onClick={() => navigate("/users")} />
           {(role === "ADMIN" || role === "SUPERADMIN") && (
-            <>
-              <NavIcon icon={UsersIcon} label="Equipe" active={currentPath.startsWith("/users")} onClick={() => navigate("/users")} />
-              <NavIcon icon={Search} label="Filas" active={currentPath.startsWith("/queues")} onClick={() => navigate("/queues")} />
-            </>
+            <NavIcon icon={Search} label="Filas" active={currentPath.startsWith("/queues")} onClick={() => navigate("/queues")} />
           )}
           <NavIcon icon={ContactsIcon} label="Contatos" active={currentPath.startsWith("/contacts")} onClick={() => navigate("/contacts")} />
         </div>
@@ -219,9 +217,10 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
           <Route path="/canned" element={<CannedResponses onBack={() => navigate("/chat")} />} />
           <Route path="/dashboard" element={<DashboardView token={token} onBack={() => navigate("/chat")} />} />
 
+          <Route path="/users" element={<Users token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} />} />
+
           {(role === "ADMIN" || role === "SUPERADMIN") && (
             <>
-              <Route path="/users" element={<Users token={token} onBack={() => navigate("/chat")} />} />
               <Route path="/settings" element={<Settings token={token} onBack={() => navigate("/chat")} />} />
               <Route path="/queues" element={<QueueSettings onBack={() => navigate("/chat")} />} />
             </>

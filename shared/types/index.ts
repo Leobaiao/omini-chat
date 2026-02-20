@@ -8,6 +8,8 @@ export interface User {
     Role: Role;
     IsActive: boolean;
     CreatedAt?: string;
+    AgentName?: string;
+    TenantName?: string;
 }
 
 export interface Tenant {
