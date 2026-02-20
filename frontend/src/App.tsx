@@ -10,7 +10,7 @@ import { AudioPlayer } from "./components/AudioPlayer";
 import { Settings } from "./Settings";
 import { Dashboard as DashboardView } from "./Dashboard";
 
-const API = "http://localhost:3001";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 const socket = io(API);
 
 type Conversation = {

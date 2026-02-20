@@ -9,7 +9,7 @@ type Contact = {
     Notes?: string;
 };
 
-const API = "http://localhost:3001";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
 export function Contacts({ onBack, onStartChat }: { onBack: () => void, onStartChat: (c: any) => void }) {
     const [items, setItems] = useState<Contact[]>([]);

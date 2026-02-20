@@ -1,9 +1,11 @@
 import "dotenv/config";
-import sql from "mssql";
+import pkg from "mssql";
+const { connect } = pkg;
+import type { ConnectionPool } from "mssql";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { hashPassword } from "../auth";
+import { hashPassword } from "../auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const config = {
   user: process.env.DB_USER!,
   password: process.env.DB_PASS!,
-  server: "127.0.0.1",
+  server: process.env.DB_HOST || "db",
   database: "master", // Connect to master first to create DB if needed
   options: {
     encrypt: false,
@@ -19,7 +21,7 @@ const config = {
   }
 };
 
-async function runScript(pool: any, filePath: string, replacements: Record<string, string> = {}) {
+async function runScript(pool: ConnectionPool, filePath: string, replacements: Record<string, string> = {}) {
   console.log(`Reading ${filePath}...`);
   let content = await fs.readFile(filePath, "utf-8");
 
@@ -46,7 +48,7 @@ async function runScript(pool: any, filePath: string, replacements: Record<strin
 
 async function main() {
   console.log("Connecting to SQL Server...");
-  const pool = await sql.connect(config);
+  const pool = await connect(config);
 
   try {
     // 1. Init Schema

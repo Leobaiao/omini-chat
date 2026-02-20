@@ -13,7 +13,7 @@ type TemplateModalProps = {
     onSend: (text: string) => void;
 };
 
-const API = "http://localhost:3001";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
 export function TemplateModal({ token, onClose, onSend }: TemplateModalProps) {
     const [templates, setTemplates] = useState<Template[]>([]);

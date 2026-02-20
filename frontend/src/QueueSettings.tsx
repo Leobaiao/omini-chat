@@ -6,7 +6,7 @@ type Queue = {
     IsActive: boolean;
 };
 
-const API = "http://localhost:3001";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
 export function QueueSettings({ onBack }: { onBack: () => void }) {
     const [items, setItems] = useState<Queue[]>([]);

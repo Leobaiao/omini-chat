@@ -1,6 +1,8 @@
-import sql from "mssql";
+import pkg from "mssql";
+const { ConnectionPool } = pkg;
+import type { config as SqlConfig } from "mssql";
 
-const config: sql.config = {
+const config: SqlConfig = {
   user: process.env.DB_USER!,
   password: process.env.DB_PASS!,
   server: process.env.DB_HOST!,
@@ -11,12 +13,12 @@ const config: sql.config = {
   }
 };
 
-let pool: sql.ConnectionPool | null = null;
+let pool: any = null;
 
 export async function getPool() {
   if (pool) return pool;
   try {
-    pool = await new sql.ConnectionPool(config).connect();
+    pool = await new ConnectionPool(config).connect();
     return pool;
   } catch (err) {
     console.error("Database connection failed:", err);

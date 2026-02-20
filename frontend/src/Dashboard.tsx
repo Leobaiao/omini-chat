@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-const API = "http://localhost:3001";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
 type Stats = {
     open: number;

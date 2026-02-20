@@ -494,8 +494,13 @@ app.post("/api/contacts", authMw, async (req, res) => {
     tags: z.array(z.string()).optional().nullable(),
     notes: z.string().optional().nullable()
   }).parse(req.body);
-  await createContact(user.tenantId, body as any);
-  res.json({ ok: true });
+  try {
+    await createContact(user.tenantId, body as any);
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("CONTACT CREATE ERROR:", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.put("/api/contacts/:id", authMw, async (req, res) => {

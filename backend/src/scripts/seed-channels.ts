@@ -1,11 +1,12 @@
 
-import sql from "mssql";
+import pkg from "mssql";
+const { connect } = pkg;
 import "dotenv/config";
 
 const config = {
     user: process.env.DB_USER!,
     password: process.env.DB_PASS!,
-    server: "127.0.0.1",
+    server: process.env.DB_HOST || "db",
     database: process.env.DB_NAME!,
     options: {
         encrypt: false,
@@ -15,7 +16,7 @@ const config = {
 
 async function run() {
     console.log("=== Seeding Channels ===");
-    const pool = await sql.connect(config);
+    const pool = await connect(config);
 
     const tenantId = "42D2AD5C-D9D1-4FF9-A285-7DD0CE4CDE5D";
 
