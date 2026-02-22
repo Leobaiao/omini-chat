@@ -26,7 +26,7 @@ async function runScript(pool: ConnectionPool, filePath: string, replacements: R
   let content = await fs.readFile(filePath, "utf-8");
 
   for (const [key, value] of Object.entries(replacements)) {
-    content = content.replace(key, value);
+    content = content.replaceAll(key, value);
   }
 
   // Split by GO
