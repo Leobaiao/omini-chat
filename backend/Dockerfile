@@ -1,17 +1,20 @@
 # Usar node 20 alpine
 FROM node:20-alpine
 
+# Instalar dependências para compilar módulos nativos (se necessário)
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
-# Copiar arquivos de dependência
+# Copiar arquivos de dependência primeiro para aproveitar cache
 COPY backend/package*.json ./backend/
 COPY shared/ ./shared/
 
-# Instalar dependências do backend
+# Instalar dependências do backend (com .dockerignore agindo, isso será limpo)
 WORKDIR /app/backend
 RUN npm ci
 
-# Voltar para a raiz para copiar o código e buildar
+# Copiar o restante do código do backend
 WORKDIR /app
 COPY backend/ ./backend/
 
