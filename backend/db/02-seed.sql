@@ -15,12 +15,20 @@ BEGIN
     VALUES (@TenantId, 10, DATEADD(YEAR, 1, SYSUTCDATETIME()));
 END
 
--- 3. Usuário Admin
+-- 3. Usuário Admin (Empresa Dev)
 DECLARE @UserId UNIQUEIDENTIFIER = '99999999-9999-9999-9999-999999999999';
 IF NOT EXISTS (SELECT * FROM omni.[User] WHERE Email = 'admin@teste.com')
 BEGIN
     INSERT INTO omni.[User] (UserId, TenantId, Email, PasswordHash, Role, IsActive)
     VALUES (@UserId, @TenantId, 'admin@teste.com', 0x__PASSWORD_HASH__, 'ADMIN', 1);
+END
+
+-- 3.1 Usuário SuperAdmin (Global)
+DECLARE @SA_UserId UNIQUEIDENTIFIER = '88888888-8888-8888-8888-888888888888';
+IF NOT EXISTS (SELECT * FROM omni.[User] WHERE Email = 'superadmin@teste.com')
+BEGIN
+    INSERT INTO omni.[User] (UserId, TenantId, Email, PasswordHash, Role, IsActive)
+    VALUES (@SA_UserId, @TenantId, 'superadmin@teste.com', 0x__PASSWORD_HASH__, 'SUPERADMIN', 1);
 END
 
 -- 4. Channel & Connector
