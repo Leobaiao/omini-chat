@@ -51,8 +51,15 @@ async function main() {
   const pool = await connect(config);
 
   try {
+    // 1. Localizar o diretório db (suporta dev e Docker dist)
+    const dbDir = fs.stat(path.resolve(process.cwd(), "db")).then(() => path.resolve(process.cwd(), "db"))
+      .catch(() => path.resolve(__dirname, "../../../db")); // Fallback para quando o rootDir preserva a estrutura
+
+    const activeDbDir = await dbDir;
+    console.log(`Using database scripts from: ${activeDbDir}`);
+
     // 1. Init Schema
-    const initPath = path.resolve(__dirname, "../../db/01-init.sql");
+    const initPath = path.resolve(activeDbDir, "01-init.sql");
     await runScript(pool, initPath);
 
     // Reconnect to the specific database for seeding (although USE command in script handles it, good to be safe)
@@ -62,7 +69,7 @@ async function main() {
     const passwordHash = await hashPassword("123456");
     const hashHex = passwordHash.toString("hex");
 
-    const seedPath = path.resolve(__dirname, "../../db/02-seed.sql");
+    const seedPath = path.resolve(activeDbDir, "02-seed.sql");
     await runScript(pool, seedPath, {
       "__PASSWORD_HASH__": hashHex
     });
