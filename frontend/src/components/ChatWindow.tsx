@@ -4,6 +4,8 @@ import { useChat } from "../contexts/ChatContext";
 import { AudioPlayer } from "./AudioPlayer";
 import { EmojiPicker } from "./EmojiPicker";
 import { TemplateModal } from "./TemplateModal";
+import { ImageViewerModal } from "./ImageViewerModal";
+import { DocumentCard } from "./DocumentCard";
 
 import { api } from "../lib/api";
 
@@ -42,6 +44,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [showTemplateModal, setShowTemplateModal] = useState(false);
+    const [viewingImage, setViewingImage] = useState<string | null>(null);
 
     // Canned Responses
     const [cannedResponses, setCannedResponses] = useState<any[]>([]);
@@ -250,7 +253,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                             {m.Direction === "OUT" && <div className="sender" style={{ color: "#8bb8a8" }}>Agente</div>}
 
                             {m.MediaType === "image" && m.MediaUrl && (
-                                <div className="media-attachment">
+                                <div className="media-attachment" style={{ cursor: "zoom-in" }} onClick={() => setViewingImage(m.MediaUrl!)}>
                                     <img src={m.MediaUrl} alt="Imagem" style={{ maxWidth: "100%", borderRadius: 8, marginTop: 4 }} />
                                 </div>
                             )}
@@ -265,11 +268,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                                 </div>
                             )}
                             {m.MediaType === "document" && m.MediaUrl && (
-                                <div className="media-attachment" style={{ marginTop: 4 }}>
-                                    <a href={m.MediaUrl} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
-                                        📄 Arquivo ({m.Body})
-                                    </a>
-                                </div>
+                                <DocumentCard url={m.MediaUrl} name={m.Body || 'Documento'} direction={m.Direction as any} />
                             )}
 
                             <div className="text">{m.Body}</div>
@@ -345,6 +344,13 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                 <TemplateModal
                     onClose={() => setShowTemplateModal(false)}
                     onSend={(txt) => sendReply(txt)}
+                />
+            )}
+
+            {viewingImage && (
+                <ImageViewerModal
+                    src={viewingImage}
+                    onClose={() => setViewingImage(null)}
                 />
             )}
 
