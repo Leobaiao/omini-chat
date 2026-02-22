@@ -263,23 +263,26 @@ body,
 
 /* Input bar */
 .chat-input-bar {
-  padding: 12px 20px;
+  padding: 10px 20px;
   border-top: 1px solid var(--border);
   display: flex;
+  align-items: center;
   gap: 10px;
   background: var(--bg-secondary);
+  min-height: 60px;
 }
 
 .chat-input-bar input {
   flex: 1;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-radius: 10px;
   border: none;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 14px;
   outline: none;
-  transition: box-shadow 0.2s;
+  transition: all 0.2s;
+  height: 40px;
 }
 
 .chat-input-bar input:focus {
@@ -287,13 +290,17 @@ body,
 }
 
 .btn {
-  padding: 10px 18px;
+  padding: 0 18px;
+  height: 40px;
   border-radius: 10px;
   border: none;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
   transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-primary {
@@ -502,7 +509,7 @@ body,
   .app-layout {
     flex-direction: column;
   }
-  
+
   /* Bottom navigation for mobile instead of left sidebar */
   .sidebar-main {
     width: 100%;
@@ -511,13 +518,15 @@ body,
     padding: 0 10px;
     border-right: none;
     border-top: 1px solid var(--border);
-    order: 3; /* Move to bottom */
+    order: 3;
+    /* Move to bottom */
     justify-content: space-around;
   }
 
   .sidebar-main .brand,
   .sidebar-main .footer-items {
-    display: none; /* Hide brand and footer on mobile nav */
+    display: none;
+    /* Hide brand and footer on mobile nav */
   }
 
   .sidebar-main .nav-items {
@@ -540,7 +549,8 @@ body,
 
   .conversation-list-panel {
     width: 100%;
-    height: calc(100vh - 60px); /* Fill space above nav */
+    height: calc(100vh - 60px);
+    /* Fill space above nav */
     border-right: none;
     order: 1;
   }
@@ -567,14 +577,15 @@ body,
   .app-layout.mobile-detail-open .conversation-list-panel {
     display: none;
   }
-  
+
   .app-layout.mobile-detail-open .sidebar-main {
     display: none;
   }
 
   .app-layout.mobile-detail-open .chat-area {
     display: flex;
-    height: 100vh; /* Full screen when chat is open */
+    height: 100vh;
+    /* Full screen when chat is open */
   }
 
   .bubble {
