@@ -1,15 +1,26 @@
+# Usar node 20 alpine
 FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+# Copiar arquivos de dependência
+COPY backend/package*.json ./backend/
+COPY shared/ ./shared/
+
+# Instalar dependências do backend
+WORKDIR /app/backend
 RUN npm ci
 
-COPY . .
+# Voltar para a raiz para copiar o código e buildar
+WORKDIR /app
+COPY backend/ ./backend/
 
-# Build TypeScript
+# Build do projeto
+WORKDIR /app/backend
 RUN npm run build
 
-EXPOSE 3001
+# Expor a porta definida no docker-compose (3002)
+EXPOSE 3002
 
-CMD ["node", "dist/index.js"]
+# Comando para rodar
+CMD ["npm", "start"]

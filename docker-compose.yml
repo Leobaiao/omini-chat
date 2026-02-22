@@ -8,15 +8,18 @@ services:
     user: root
     environment:
       - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=Intamr17@ #MSSQL_SA_PASSWORD=OmniChat@2025! # Mude isso em produção!
+      - MSSQL_SA_PASSWORD=Intamr17@
     ports:
-      - "14333:1433" # Mapeando para 14333 para evitar conflito com SQL Server local
+      - "14333:1433"
     volumes:
       - mssql_data:/var/opt/mssql
+    restart: always
 
   # Backend (API)
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: omnichat_api
     depends_on:
       - db
@@ -34,9 +37,10 @@ services:
   # Frontend (React + Nginx)
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
-        - VITE_API_URL= # Deixar vazio para usar caminho relativo do Nginx
+        - VITE_API_URL=
     container_name: omnichat_web
     depends_on:
       - backend
