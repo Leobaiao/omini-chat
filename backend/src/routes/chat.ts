@@ -33,29 +33,39 @@ router.get("/", async (req, res, next) => {
 
         // Se for AGENTE, vê apenas as dele OU unassigned (em fila)
         let filterClause = "WHERE c.TenantId = @tenantId";
+        let messageFilter = "WHERE Direction = 'OUT' AND TenantId = @tenantId";
         if (user.role === 'AGENT') {
             filterClause += " AND (c.AssignedUserId = @userId OR c.AssignedUserId IS NULL)";
+        } else if (user.role === 'SUPERADMIN') {
+            // SUPERADMIN vê todas as conversas de todos os tenants
+            filterClause = "WHERE 1=1";
+            messageFilter = "WHERE Direction = 'OUT'";
         }
 
         const r = await pool.request()
             .input("tenantId", user.tenantId)
             .input("userId", user.userId)
             .query(`
+        WITH LastOutbound AS (
+          SELECT ConversationId, MAX(CreatedAt) as LastOutAt
+          FROM omni.Message
+          ${messageFilter}
+          GROUP BY ConversationId
+        )
         SELECT c.ConversationId, c.Title, c.Status, c.Kind, c.LastMessageAt, c.QueueId, c.AssignedUserId,
                etm.ExternalUserId,
                q.Name AS QueueName,
-               ISNULL((
-                 SELECT COUNT(*) FROM omni.Message m
+               (
+                 SELECT COUNT(*) 
+                 FROM omni.Message m
                  WHERE m.ConversationId = c.ConversationId
                    AND m.Direction = 'IN'
-                   AND m.CreatedAt > ISNULL((
-                     SELECT MAX(m2.CreatedAt) FROM omni.Message m2
-                     WHERE m2.ConversationId = c.ConversationId AND m2.Direction = 'OUT'
-                   ), '1900-01-01')
-               ), 0) AS UnreadCount
+                   AND m.CreatedAt > ISNULL(lo.LastOutAt, '1900-01-01')
+               ) AS UnreadCount
         FROM omni.Conversation c
         LEFT JOIN omni.ExternalThreadMap etm ON etm.ConversationId = c.ConversationId
         LEFT JOIN omni.Queue q ON q.QueueId = c.QueueId
+        LEFT JOIN LastOutbound lo ON lo.ConversationId = c.ConversationId
         ${filterClause}
         ORDER BY c.LastMessageAt DESC
       `);

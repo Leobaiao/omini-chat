@@ -31,7 +31,7 @@ export function Contacts({ onBack, onStartChat }: { onBack: () => void, onStartC
                 if (Array.isArray(res.data)) {
                     setItems(res.data);
                 } else {
-                    console.error("Invalid contacts format:", res.data);
+                    console.error("API returned non-array for contacts:", res.data);
                     setItems([]);
                 }
             })

@@ -1,3 +1,4 @@
+import sql from "mssql";
 import { getPool } from "../db.js";
 import { NormalizedInbound } from "../adapters/types.js";
 
@@ -53,14 +54,41 @@ export async function saveInboundMessage(inb: NormalizedInbound, conversationId:
     .input("body", inb.text ?? (inb.mediaType ? `[${inb.mediaType}]` : ""))
     .input("mediaType", inb.mediaType ?? null)
     .input("mediaUrl", inb.mediaUrl ?? null)
+    .input("externalMessageId", inb.externalMessageId ?? null)
     .input("payload", JSON.stringify(inb.raw))
     .query(`
-      INSERT INTO omni.Message (TenantId, ConversationId, SenderExternalId, Direction, Body, MediaType, MediaUrl, PayloadJson)
-      VALUES (@tenantId, @conversationId, @senderExternalId, @direction, @body, @mediaType, @mediaUrl, @payload);
+      INSERT INTO omni.Message (TenantId, ConversationId, SenderExternalId, Direction, Body, MediaType, MediaUrl, ExternalMessageId, PayloadJson)
+      VALUES (@tenantId, @conversationId, @senderExternalId, @direction, @body, @mediaType, @mediaUrl, @externalMessageId, @payload);
 
       UPDATE omni.Conversation SET LastMessageAt = SYSUTCDATETIME()
       WHERE ConversationId=@conversationId;
     `);
+}
+
+/**
+ * Atualiza o status de uma mensagem (DELIVERED, READ) pelo ExternalMessageId.
+ * Retorna o ConversationId se encontrou a mensagem, null caso contrário.
+ */
+export async function updateMessageStatus(tenantId: string, externalMessageId: string, status: string): Promise<string | null> {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input("tenantId", tenantId)
+    .input("externalMsgId", externalMessageId)
+    .input("status", status)
+    .query(`
+      UPDATE omni.Message 
+      SET Status = @status 
+      WHERE TenantId = @tenantId AND ExternalMessageId = @externalMsgId
+        AND (
+          (@status = 'DELIVERED' AND Status = 'SENT')
+          OR (@status = 'READ' AND Status IN ('SENT', 'DELIVERED'))
+        );
+
+      SELECT TOP 1 ConversationId FROM omni.Message 
+      WHERE TenantId = @tenantId AND ExternalMessageId = @externalMsgId;
+    `);
+
+  return r.recordset.length > 0 ? r.recordset[0].ConversationId : null;
 }
 
 export async function saveOutboundMessage(tenantId: string, conversationId: string, body: string) {
@@ -87,7 +115,10 @@ export async function findOrCreateConversation(tenantId: string, phone: string, 
 
   // 1. Tentar achar via ExternalThreadMap
   let externalUserId = phone;
-  if (!externalUserId.includes("@")) externalUserId += "@s.whatsapp.net";
+  // TODO: Move suffix logic to adapters or config
+  if (!externalUserId.includes("@") && !externalUserId.startsWith("webchat_")) {
+    externalUserId += "@s.whatsapp.net";
+  }
 
   const found = await pool.request()
     .input("tenantId", tenantId)
@@ -166,14 +197,21 @@ export async function findOrCreateConversation(tenantId: string, phone: string, 
 
 export async function deleteConversation(tenantId: string, conversationId: string) {
   const pool = await getPool();
-  // Transaction? For MVP, sequential deletes.
-  // Dependencies: Message, ExternalThreadMap
-  await pool.request()
-    .input("tenantId", tenantId)
-    .input("conversationId", conversationId)
-    .query(`
-      DELETE FROM omni.Message WHERE ConversationId = @conversationId AND TenantId = @tenantId;
-      DELETE FROM omni.ExternalThreadMap WHERE ConversationId = @conversationId AND TenantId = @tenantId;
-      DELETE FROM omni.Conversation WHERE ConversationId = @conversationId AND TenantId = @tenantId;
-    `);
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+
+  try {
+    await transaction.request()
+      .input("tenantId", tenantId)
+      .input("conversationId", conversationId)
+      .query(`
+        DELETE FROM omni.Message WHERE ConversationId = @conversationId AND TenantId = @tenantId;
+        DELETE FROM omni.ExternalThreadMap WHERE ConversationId = @conversationId AND TenantId = @tenantId;
+        DELETE FROM omni.Conversation WHERE ConversationId = @conversationId AND TenantId = @tenantId;
+      `);
+    await transaction.commit();
+  } catch (err) {
+    await transaction.rollback();
+    throw err;
+  }
 }

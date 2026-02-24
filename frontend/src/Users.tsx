@@ -43,7 +43,12 @@ export function Users({ token, onBack, role }: Props) {
         setLoading(true);
         try {
             const res = await api.get<User[]>("/api/users");
-            setUsers(res.data);
+            if (Array.isArray(res.data)) {
+                setUsers(res.data);
+            } else {
+                console.error("API returned non-array for users:", res.data);
+                setUsers([]);
+            }
         } catch (e) {
             console.error(e);
         } finally {

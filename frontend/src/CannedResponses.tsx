@@ -14,7 +14,14 @@ export function CannedResponses({ onBack }: { onBack: () => void }) {
 
     useEffect(() => {
         api.get<CannedResponse[]>("/api/canned-responses")
-            .then((res) => setItems(res.data))
+            .then((res) => {
+                if (Array.isArray(res.data)) {
+                    setItems(res.data);
+                } else {
+                    console.error("API returned non-array for canned responses:", res.data);
+                    setItems([]);
+                }
+            })
             .catch(console.error);
     }, []);
 
@@ -26,7 +33,9 @@ export function CannedResponses({ onBack }: { onBack: () => void }) {
 
             // reload
             const listRes = await api.get<CannedResponse[]>("/api/canned-responses");
-            setItems(listRes.data);
+            if (Array.isArray(listRes.data)) {
+                setItems(listRes.data);
+            }
             setView("LIST");
             setNewShortcut("");
             setNewContent("");

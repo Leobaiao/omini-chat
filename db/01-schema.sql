@@ -6,6 +6,7 @@ GO
 CREATE TABLE omni.Tenant (
     TenantId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
     Name NVARCHAR(200) NOT NULL,
+    DefaultProvider NVARCHAR(50) NOT NULL DEFAULT 'GTI',
     CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     IsActive BIT NOT NULL DEFAULT 1
 );
@@ -31,6 +32,8 @@ CREATE TABLE omni.[User] (
     TenantId UNIQUEIDENTIFIER NOT NULL,
     Email NVARCHAR(320) NOT NULL,
     DisplayName NVARCHAR(200) NOT NULL,
+    Avatar NVARCHAR(MAX) NULL,
+    Position NVARCHAR(100) NULL,
     PasswordHash VARBINARY(256) NOT NULL,
     Role NVARCHAR(50) NOT NULL,
     IsActive BIT NOT NULL DEFAULT 1,
@@ -69,14 +72,25 @@ CREATE TABLE omni.Channel (
 );
 GO
 
+CREATE TABLE omni.Queue (
+    QueueId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+    TenantId UNIQUEIDENTIFIER NOT NULL,
+    Name NVARCHAR(100) NOT NULL,
+    IsActive BIT NOT NULL DEFAULT 1,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_Queue_Tenant FOREIGN KEY (TenantId) REFERENCES omni.Tenant(TenantId)
+);
+GO
+
 CREATE TABLE omni.ChannelConnector (
-    ConnectorId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+    ConnectorId NVARCHAR(100) NOT NULL PRIMARY KEY,
     ChannelId UNIQUEIDENTIFIER NOT NULL,
     Provider NVARCHAR(30) NOT NULL DEFAULT 'GENERIC', -- GTI | ZAPI | OFFICIAL
     RoutingKey NVARCHAR(100) NULL,
     ConfigJson NVARCHAR(MAX) NOT NULL,
     WebhookSecret NVARCHAR(200) NULL,
     IsActive BIT NOT NULL DEFAULT 1,
+    DeletedAt DATETIME2 NULL,
     CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT FK_Connector_Channel FOREIGN KEY (ChannelId) REFERENCES omni.Channel(ChannelId)
 );
@@ -89,10 +103,14 @@ CREATE TABLE omni.Conversation (
     Title NVARCHAR(200) NOT NULL,
     Kind NVARCHAR(20) NOT NULL, -- GROUP, DIRECT, TICKET
     Status NVARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    QueueId UNIQUEIDENTIFIER NULL,
+    AssignedUserId UNIQUEIDENTIFIER NULL,
     CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     LastMessageAt DATETIME2 NULL,
     CONSTRAINT FK_Conversation_Tenant FOREIGN KEY (TenantId) REFERENCES omni.Tenant(TenantId),
-    CONSTRAINT FK_Conversation_Channel FOREIGN KEY (ChannelId) REFERENCES omni.Channel(ChannelId)
+    CONSTRAINT FK_Conversation_Channel FOREIGN KEY (ChannelId) REFERENCES omni.Channel(ChannelId),
+    CONSTRAINT FK_Conversation_Queue FOREIGN KEY (QueueId) REFERENCES omni.Queue(QueueId),
+    CONSTRAINT FK_Conversation_User FOREIGN KEY (AssignedUserId) REFERENCES omni.[User](UserId)
 );
 GO
 CREATE INDEX IX_Conversation_Tenant_LastMessage ON omni.Conversation(TenantId, LastMessageAt DESC);
@@ -109,6 +127,21 @@ CREATE TABLE omni.ConversationMember (
 );
 GO
 
+CREATE TABLE omni.Contact (
+    ContactId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+    TenantId UNIQUEIDENTIFIER NOT NULL,
+    Name NVARCHAR(200) NOT NULL,
+    Phone NVARCHAR(50) NOT NULL,
+    Email NVARCHAR(320) NULL,
+    Tags NVARCHAR(MAX) NULL,
+    Notes NVARCHAR(MAX) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_Contact_Tenant FOREIGN KEY (TenantId) REFERENCES omni.Tenant(TenantId)
+);
+GO
+CREATE INDEX IX_Contact_Tenant_Phone ON omni.Contact(TenantId, Phone);
+GO
+
 CREATE TABLE omni.Message (
     MessageId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
     TenantId UNIQUEIDENTIFIER NOT NULL,
@@ -117,6 +150,10 @@ CREATE TABLE omni.Message (
     SenderExternalId NVARCHAR(200) NULL,
     Direction NVARCHAR(10) NOT NULL, -- IN, OUT, INTERNAL
     Body NVARCHAR(MAX) NOT NULL,
+    MediaType NVARCHAR(50) NULL, -- image, audio, video, document
+    MediaUrl NVARCHAR(MAX) NULL,
+    ExternalMessageId NVARCHAR(200) NULL, -- GTI message ID for status tracking
+    Status NVARCHAR(20) NOT NULL DEFAULT 'SENT', -- SENT, DELIVERED, READ
     PayloadJson NVARCHAR(MAX) NULL,
     CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT FK_Message_Tenant FOREIGN KEY (TenantId) REFERENCES omni.Tenant(TenantId),
@@ -166,7 +203,7 @@ GO
 
 CREATE TABLE omni.ExternalThreadMap (
     TenantId UNIQUEIDENTIFIER NOT NULL,
-    ConnectorId UNIQUEIDENTIFIER NOT NULL,
+    ConnectorId NVARCHAR(100) NOT NULL, -- Change to NVARCHAR to support string IDs
     ExternalChatId NVARCHAR(200) NOT NULL,
     ExternalUserId NVARCHAR(200) NOT NULL,
     ConversationId UNIQUEIDENTIFIER NOT NULL,

@@ -15,7 +15,14 @@ export function authMw(req: Request, res: Response, next: NextFunction) {
 export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     const u = (req as any).user;
-    if (!u || !roles.includes(u.role)) return res.status(403).json({ error: "Forbidden" });
+    if (!u) return res.status(403).json({ error: "Forbidden" });
+
+    // SUPERADMIN can access ADMIN routes
+    if (u.role === 'SUPERADMIN' && roles.includes('ADMIN')) {
+      return next();
+    }
+
+    if (!roles.includes(u.role)) return res.status(403).json({ error: "Forbidden" });
     next();
   };
 }

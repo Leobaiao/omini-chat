@@ -43,10 +43,11 @@ async function main() {
                 .input("tenantId", tenantId)
                 .input("email", email)
                 .input("hash", hash)
+                .input("displayName", "Super Admin")
                 .query(`
-          INSERT INTO omni.[User] (TenantId, Email, PasswordHash, Role)
+          INSERT INTO omni.[User] (TenantId, Email, DisplayName, PasswordHash, Role)
           OUTPUT inserted.UserId
-          VALUES (@tenantId, @email, @hash, 'SUPERADMIN')
+          VALUES (@tenantId, @email, @displayName, @hash, 'SUPERADMIN')
         `);
 
             const userId = r.recordset[0].UserId;

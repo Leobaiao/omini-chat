@@ -176,6 +176,9 @@ BEGIN
         Email NVARCHAR(255) NOT NULL,
         PasswordHash VARBINARY(MAX) NOT NULL,
         Role NVARCHAR(50) NOT NULL DEFAULT 'AGENT', -- ADMIN, AGENT
+        Name NVARCHAR(100) NULL,
+        Avatar NVARCHAR(MAX) NULL,
+        Position NVARCHAR(100) NULL,
         IsActive BIT DEFAULT 1,
         CreatedAt DATETIME2 DEFAULT SYSUTCDATETIME(),
         CONSTRAINT UK_User_Email UNIQUE (Email)

@@ -49,12 +49,13 @@ router.post("/", requireRole("ADMIN"), validateBody(z.object({
             const rUser = await transaction.request()
                 .input("tenantId", u.tenantId)
                 .input("email", body.email)
+                .input("name", body.name)
                 .input("hash", hash)
                 .input("role", body.role)
                 .query(`
-          INSERT INTO omni.[User] (TenantId, Email, PasswordHash, Role)
+          INSERT INTO omni.[User] (TenantId, Email, DisplayName, PasswordHash, Role)
           OUTPUT inserted.UserId
-          VALUES (@tenantId, @email, @hash, @role)
+          VALUES (@tenantId, @email, @name, @hash, @role)
         `);
             const newUserId = rUser.recordset[0].UserId;
 

@@ -5,7 +5,7 @@ import { authMw, requireRole } from "../mw.js";
 import { validateBody } from "../middleware/validateMw.js";
 
 const router = Router();
-router.use(authMw, requireRole("ADMIN"));
+router.use(authMw, requireRole("ADMIN", "SUPERADMIN"));
 
 router.get("/", async (req, res, next) => {
     try {

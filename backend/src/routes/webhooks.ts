@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { resolveConversationForInbound, saveInboundMessage } from "../services/conversation.js";
+import { resolveConversationForInbound, saveInboundMessage, updateMessageStatus } from "../services/conversation.js";
 import { Orchestrator, TriageBot } from "../agents.js";
 import { loadConnector } from "../utils.js"; // Needs to be created or moved if it exists
 
@@ -17,6 +17,32 @@ router.post("/whatsapp/:provider/:connectorId/*", async (req, res, next) => {
 
         if (!adapter) return res.status(404).send("Unknown provider");
 
+        console.log(`[Webhook] Received ${provider} event: EventType=${req.body?.EventType}, keys=${Object.keys(req.body || {}).join(',')}`);
+
+        // 1. Try status update (messages_update → delivered/read)
+        if (adapter.parseStatusUpdate) {
+            const statusUpdate = adapter.parseStatusUpdate(req.body, connector);
+            if (statusUpdate) {
+                const conversationId = await updateMessageStatus(
+                    statusUpdate.tenantId,
+                    statusUpdate.externalMessageId,
+                    statusUpdate.status
+                );
+
+                const io = req.app.get("io");
+                if (io && conversationId) {
+                    io.to(`tenant:${statusUpdate.tenantId}`).emit("message:status", {
+                        conversationId,
+                        externalMessageId: statusUpdate.externalMessageId,
+                        status: statusUpdate.status
+                    });
+                }
+
+                return res.status(200).json({ ok: true, statusUpdate: statusUpdate.status });
+            }
+        }
+
+        // 2. Try inbound message (messages → new message)
         const inbound = adapter.parseInbound(req.body, connector);
         if (!inbound) return res.status(200).send("ignored");
 
@@ -42,13 +68,18 @@ router.post("/whatsapp/:provider/:connectorId/*", async (req, res, next) => {
             });
         }
 
-        const decisions = await orch.run("TriageBot", inbound.text ?? "[media]", {
+        // Run AI orchestration in background
+        orch.run("TriageBot", inbound.text ?? "[media]", {
             tenantId: inbound.tenantId,
             conversationId,
             externalSenderId: inbound.externalUserId
+        }).then(decisions => {
+            // For now, decisions are just logged or can be used to trigger other actions/socket events
+        }).catch(err => {
+            console.error("Orchestrator background error:", err);
         });
 
-        return res.status(200).json({ ok: true, conversationId, decisions });
+        return res.status(200).json({ ok: true, conversationId });
     } catch (error) {
         next(error);
     }

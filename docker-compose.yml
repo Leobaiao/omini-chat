@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Banco de Dados
   db:
@@ -24,12 +22,12 @@ services:
     depends_on:
       - db
     environment:
-      - PORT=3002
-      - DB_USER=sa
-      - DB_PASS=Intamr17@
-      - DB_NAME=OmniChatDev
-      - DB_HOST=db
-      - JWT_SECRET=Intamr17@
+      PORT: 3002
+      DB_USER: sa
+      DB_PASS: "Intamr17@"
+      DB_NAME: OmniChatDev
+      DB_HOST: db
+      JWT_SECRET: "Intamr17@"
     ports:
       - "3002:3002"
     restart: always

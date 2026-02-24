@@ -36,7 +36,12 @@ export function TemplateModal({ onClose, onSend }: TemplateModalProps) {
         setLoading(true);
         try {
             const res = await api.get<Template[]>("/api/templates");
-            setTemplates(res.data);
+            if (Array.isArray(res.data)) {
+                setTemplates(res.data);
+            } else {
+                console.error("API returned non-array for templates:", res.data);
+                setTemplates([]);
+            }
         } catch (err) {
             console.error(err);
         } finally {

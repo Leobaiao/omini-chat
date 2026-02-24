@@ -16,7 +16,14 @@ export function QueueSettings({ onBack }: { onBack: () => void }) {
 
     const fetchQueues = () => {
         api.get<Queue[]>("/api/queues")
-            .then((res) => setItems(res.data))
+            .then((res) => {
+                if (Array.isArray(res.data)) {
+                    setItems(res.data);
+                } else {
+                    console.error("API returned non-array for queues:", res.data);
+                    setItems([]);
+                }
+            })
             .catch(console.error);
     }
 

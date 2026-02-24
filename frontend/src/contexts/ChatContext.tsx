@@ -53,7 +53,7 @@ export function ChatProvider({ children, token, onLogout }: { children: ReactNod
     // 1. Initial Load & Socket Connection
     useEffect(() => {
         if (!tenantId) return;
-        const newSocket = io(API_URL);
+        const newSocket = io(import.meta.env.VITE_API_URL || undefined);
         setSocket(newSocket);
 
         refreshConversations();
@@ -78,7 +78,14 @@ export function ChatProvider({ children, token, onLogout }: { children: ReactNod
         setMessages([]);
 
         api.get<Message[]>(`/api/conversations/${selectedConversationId}/messages`)
-            .then((res) => setMessages(res.data))
+            .then((res) => {
+                if (Array.isArray(res.data)) {
+                    setMessages(res.data);
+                } else {
+                    console.error("API returned non-array for messages:", res.data);
+                    setMessages([]);
+                }
+            })
             .catch(console.error);
 
         socket.emit("conversation:join", selectedConversationId);

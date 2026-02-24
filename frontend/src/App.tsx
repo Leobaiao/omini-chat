@@ -61,8 +61,7 @@ function TabButton({ label, active, onClick }: any) {
 }
 
 import { api } from "./lib/api";
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
-const socket = io(API_URL);
+const socket = io(import.meta.env.VITE_API_URL || undefined);
 
 import type { Conversation, Message, CannedResponse } from "../../shared/types";
 
@@ -130,6 +129,11 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
   const navigate = useNavigate();
   const location = useLocation();
   const { conversations, selectedConversationId, setSelectedConversationId, refreshConversations } = useChat();
+  const [profile, setProfile] = useState<{ Name?: string; Avatar?: string; Position?: string } | null>(null);
+
+  useEffect(() => {
+    api.get("/api/profile").then(res => setProfile(res.data)).catch(console.error);
+  }, []);
 
   const handleStartChat = async (contact: any) => {
     if (!contact || !contact.Phone) {
@@ -178,17 +182,30 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
     <div className={`app-layout ${isMobileDetailOpen ? "mobile-detail-open" : ""}`}>
       {/* Sidebar Principal (Menu de Ícones) */}
       <div className="sidebar-main">
-        <div className="brand" title="OmniChat">🟢</div>
-        <div className="nav-items">
-          <NavIcon icon={LayoutDashboard} label="Dashboard" active={currentPath.startsWith("/dashboard")} onClick={() => navigate("/dashboard")} />
-          <NavIcon icon={MessageSquare} label="Conversas" active={isChat} onClick={() => navigate("/chat")} />
-          <NavIcon icon={Ticket} label="Chamados" active={false} onClick={() => showToast("Módulo de Tickets em breve!", "info")} />
-          <NavIcon icon={BookOpen} label="Respostas" active={currentPath.startsWith("/canned")} onClick={() => navigate("/canned")} />
-          <NavIcon icon={UsersIcon} label="Equipe" active={currentPath.startsWith("/users")} onClick={() => navigate("/users")} />
-          {(role === "ADMIN" || role === "SUPERADMIN") && (
-            <NavIcon icon={Search} label="Filas" active={currentPath.startsWith("/queues")} onClick={() => navigate("/queues")} />
+        <div className="profile-selection" style={{ marginBottom: 30, textAlign: "center" }} onClick={() => navigate("/settings")}>
+          {profile?.Avatar ? (
+            <img src={profile.Avatar} alt="Profile" className="sidebar-avatar" />
+          ) : (
+            <div className="sidebar-avatar-placeholder">
+              {profile?.Name ? profile.Name.charAt(0).toUpperCase() : role.charAt(0)}
+            </div>
           )}
+        </div>
+        <div className="nav-items">
+          {/* Atendimento */}
+          <NavIcon icon={MessageSquare} label="Conversas" active={isChat} onClick={() => navigate("/chat")} />
           <NavIcon icon={ContactsIcon} label="Contatos" active={currentPath.startsWith("/contacts")} onClick={() => navigate("/contacts")} />
+          <NavIcon icon={LayoutDashboard} label="Dashboard" active={currentPath.startsWith("/dashboard")} onClick={() => navigate("/dashboard")} />
+
+          <div style={{ height: 1, background: "var(--border)", margin: "10px 15px", opacity: 0.5 }} />
+
+          {/* Gestão e Apoio */}
+          <NavIcon icon={BookOpen} label="Respostas Rápidas" active={currentPath.startsWith("/canned")} onClick={() => navigate("/canned")} />
+          <NavIcon icon={UsersIcon} label="Minha Equipe" active={currentPath.startsWith("/users")} onClick={() => navigate("/users")} />
+          {(role === "ADMIN" || role === "SUPERADMIN") && (
+            <NavIcon icon={Search} label="Filas de Atendimento" active={currentPath.startsWith("/queues")} onClick={() => navigate("/queues")} />
+          )}
+          <NavIcon icon={Ticket} label="Chamados" active={false} onClick={() => showToast("Módulo de Tickets em breve!", "info")} />
         </div>
         <div className="footer-items">
           {role === "SUPERADMIN" && (
@@ -221,7 +238,7 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
 
           {(role === "ADMIN" || role === "SUPERADMIN") && (
             <>
-              <Route path="/settings" element={<Settings token={token} onBack={() => navigate("/chat")} />} />
+              <Route path="/settings" element={<Settings token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} />} />
               <Route path="/queues" element={<QueueSettings onBack={() => navigate("/chat")} />} />
             </>
           )}

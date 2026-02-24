@@ -14,9 +14,10 @@ COPY shared/ ./shared/
 WORKDIR /app/backend
 RUN npm ci
 
-# Copiar o restante do código do backend
+# Copiar o restante do código do backend e a pasta de banco
 WORKDIR /app
 COPY backend/ ./backend/
+COPY db/ ./backend/db/
 
 # Build do projeto
 WORKDIR /app/backend

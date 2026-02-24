@@ -1,4 +1,4 @@
-import { ChannelAdapter, NormalizedInbound } from "./types.js";
+import { ChannelAdapter, NormalizedInbound, StatusUpdate } from "./types.js";
 
 /**
  * GTI Adapter (uazapi)
@@ -63,11 +63,45 @@ export class GtiAdapter implements ChannelAdapter {
       provider: "GTI",
       externalChatId,
       externalUserId,
+      externalMessageId: msg.id ?? msg.messageId ?? undefined,
       text,
       mediaUrl,
       mediaType,
       timestamp: Number(msg.messageTimestamp ?? Date.now()),
       raw: body
+    };
+  }
+
+  parseStatusUpdate(body: any, connector: any): StatusUpdate | null {
+    if (body?.EventType !== "messages_update") return null;
+
+    const msg = body?.message;
+    if (!msg) return null;
+
+    const msgId = msg.id ?? msg.messageId;
+    if (!msgId) return null;
+
+    // GTI status mapping: "delivered" → DELIVERED, "read" → READ
+    let status: "DELIVERED" | "READ" | null = null;
+    const rawStatus = String(msg.status ?? msg.ack ?? "").toLowerCase();
+
+    if (rawStatus === "read" || rawStatus === "4" || rawStatus === "played") {
+      status = "READ";
+    } else if (rawStatus === "delivered" || rawStatus === "3" || rawStatus === "received") {
+      status = "DELIVERED";
+    }
+
+    if (!status) {
+      console.log(`[GTI] Status update ignorado para msg ${msgId}: status="${rawStatus}"`);
+      return null;
+    }
+
+    console.log(`[GTI] Status update: msg ${msgId} → ${status}`);
+
+    return {
+      tenantId: connector.TenantId,
+      externalMessageId: msgId,
+      status
     };
   }
 
@@ -109,6 +143,7 @@ export class GtiAdapter implements ChannelAdapter {
 
   async setWebhook(connector: any, options: {
     url: string;
+    enabled?: boolean;
     events?: string[];
     excludeMessages?: string[];
     addUrlEvents?: boolean;
@@ -119,7 +154,8 @@ export class GtiAdapter implements ChannelAdapter {
     const url = `${baseUrl}/webhook`;
 
     const payload = {
-      enabled: true,
+      instance: cfg.instance,
+      enabled: options.enabled ?? true,
       url: options.url,
       events: options.events || [
         "connection", "history", "messages", "messages_update",
@@ -146,6 +182,51 @@ export class GtiAdapter implements ChannelAdapter {
     if (!response.ok) {
       const errBody = await response.text();
       throw new Error(`GTI setWebhook() falhou: ${response.status} - ${errBody}`);
+    }
+  }
+
+  async getWebhook(connector: any): Promise<any> {
+    const cfg = JSON.parse(connector.ConfigJson);
+    const baseUrl = cfg.baseUrl ?? "https://api.gtiapi.workers.dev";
+    const url = `${baseUrl}/webhook`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "token": cfg.token || cfg.apiKey
+      }
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`GTI getWebhook() falhou: ${response.status} - ${errBody}`);
+    }
+
+    return await response.json();
+  }
+
+  async removeWebhook(connector: any, webhookId: string): Promise<void> {
+    const cfg = JSON.parse(connector.ConfigJson);
+    const baseUrl = cfg.baseUrl ?? "https://api.gtiapi.workers.dev";
+    const url = `${baseUrl}/webhook`;
+
+    const payload = {
+      action: "delete",
+      id: webhookId
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "token": cfg.token || cfg.apiKey
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`GTI removeWebhook() falhou: ${response.status} - ${errBody}`);
     }
   }
 }

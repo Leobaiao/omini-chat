@@ -63,7 +63,14 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
 
     useEffect(() => {
         api.get<any[]>("/api/canned-responses")
-            .then(res => setCannedResponses(res.data))
+            .then(res => {
+                if (Array.isArray(res.data)) {
+                    setCannedResponses(res.data);
+                } else {
+                    console.error("API returned non-array for canned responses (ChatWindow):", res.data);
+                    setCannedResponses([]);
+                }
+            })
             .catch(console.error);
     }, []);
 
@@ -140,8 +147,8 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                 api.get<any[]>("/api/users"),
                 api.get<any[]>("/api/queues")
             ]);
-            setUsersToAssign(uRes.data);
-            setQueuesToAssign(qRes.data);
+            setUsersToAssign(Array.isArray(uRes.data) ? uRes.data : []);
+            setQueuesToAssign(Array.isArray(qRes.data) ? qRes.data : []);
             setAssignTab("USERS");
             setShowAssignModal(true);
         } catch (e: any) {
@@ -178,7 +185,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                         </p>
                     </div>
                 </div>
-                <div className="actions" style={{ display: "flex", gap: 10 }}>
+                <div className="actions" style={{ display: "flex", gap: 10, flexShrink: 0 }}>
                     <button
                         onClick={async () => {
                             if (!confirm("Tem certeza que deseja apagar esta conversa e todo o histórico?")) return;
@@ -299,7 +306,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                 </button>
             )}
 
-            <div className="chat-input-bar" style={{ position: "relative" }}>
+            <div className="chat-input-bar" style={{ position: "relative", flexShrink: 0 }}>
                 {showEmojiPicker && (
                     <div style={{ position: "absolute", bottom: "60px", left: "0" }}>
                         <EmojiPicker onSelect={(emoji) => setText(prev => prev + emoji)} onClose={() => setShowEmojiPicker(false)} />

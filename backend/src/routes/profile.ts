@@ -10,6 +10,24 @@ const router = Router();
 const ProfileSchema = z.object({
     password: z.string().min(6).optional(),
     avatar: z.string().url().optional().or(z.literal("")),
+    name: z.string().min(2).optional(),
+    position: z.string().optional()
+});
+
+// GET /api/profile
+router.get("/", authMw, async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        const pool = await getPool();
+        const r = await pool.request()
+            .input("userId", user.userId)
+            .query("SELECT Email, DisplayName AS Name, Avatar, Position, Role FROM omni.[User] WHERE UserId = @userId");
+
+        if (r.recordset.length === 0) return res.status(404).json({ error: "Usuário não encontrado" });
+        res.json(r.recordset[0]);
+    } catch (error) {
+        next(error);
+    }
 });
 
 // PUT /api/profile
@@ -31,6 +49,16 @@ router.put("/", authMw, validateBody(ProfileSchema), async (req, res, next) => {
         if (body.avatar !== undefined) {
             updates.push("Avatar = @avatar");
             request.input("avatar", body.avatar || null);
+        }
+
+        if (body.name !== undefined) {
+            updates.push("DisplayName = @name");
+            request.input("name", body.name || null);
+        }
+
+        if (body.position !== undefined) {
+            updates.push("Position = @position");
+            request.input("position", body.position || null);
         }
 
         if (updates.length > 0) {

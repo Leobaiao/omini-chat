@@ -47,29 +47,46 @@ async function runScript(pool: ConnectionPool, filePath: string, replacements: R
 }
 
 async function main() {
-  console.log("Connecting to SQL Server...");
+  const targetDb = process.env.DB_NAME || "OmniChatDev";
+  console.log(`Connecting to SQL Server to reset database: ${targetDb}...`);
   const pool = await connect(config);
 
   try {
-    // 1. Localizar o diretório db (suporta dev e Docker dist)
+    // 1. Drop and Recreate Database
+    console.log(`Dropping and recreating database ${targetDb}...`);
+    await pool.query(`
+      IF EXISTS (SELECT name FROM sys.databases WHERE name = '${targetDb}')
+      BEGIN
+        ALTER DATABASE [${targetDb}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+        DROP DATABASE [${targetDb}];
+      END
+      CREATE DATABASE [${targetDb}];
+    `);
+
+    // 2. Switch to the new database
+    await pool.query(`USE [${targetDb}]`);
+    console.log(`Switched to database ${targetDb}`);
+
+    // 3. Localizar o diretório db (suporta dev e Docker dist)
     const dbDir = fs.stat(path.resolve(process.cwd(), "db")).then(() => path.resolve(process.cwd(), "db"))
       .catch(() => path.resolve(__dirname, "../../../db")); // Fallback para quando o rootDir preserva a estrutura
 
     const activeDbDir = await dbDir;
     console.log(`Using database scripts from: ${activeDbDir}`);
 
-    // 1. Init Schema
-    const initPath = path.resolve(activeDbDir, "01-init.sql");
-    await runScript(pool, initPath);
+    // 4. Init Schema
+    const schemaPath = path.resolve(activeDbDir, "01-schema.sql");
+    await runScript(pool, schemaPath);
 
-    // Reconnect to the specific database for seeding (although USE command in script handles it, good to be safe)
-    // The scripts have "USE OmniChatDev", so we are good.
+    // 5. Init Canned Responses & Automation
+    const cannedPath = path.resolve(activeDbDir, "02-canned-and-automation.sql");
+    await runScript(pool, cannedPath);
 
-    // 2. Prepare Seed Data
+    // 6. Prepare Seed Data
     const passwordHash = await hashPassword("123456");
     const hashHex = passwordHash.toString("hex");
 
-    const seedPath = path.resolve(activeDbDir, "02-seed.sql");
+    const seedPath = path.resolve(activeDbDir, "03-seed.sql");
     await runScript(pool, seedPath, {
       "__PASSWORD_HASH__": hashHex
     });
