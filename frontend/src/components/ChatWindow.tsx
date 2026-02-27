@@ -348,7 +348,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                 )}
 
                 {showCannedMenu && (
-                    <div className="canned-menu" style={{ position: "absolute", bottom: 60, left: 20, background: "#202c33", border: "1px solid #333", borderRadius: 8, maxHeight: 200, overflowY: "auto", width: 300, zIndex: 10 }}>
+                    <div className="canned-menu" style={{ position: "absolute", bottom: 60, left: 20, background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 8, maxHeight: 200, overflowY: "auto", width: 300, zIndex: 10 }}>
                         {filteredCanned.length === 0 && <div style={{ padding: 10, color: "#888" }}>Nenhuma resposta encontrada</div>}
                         {filteredCanned.map(c => (
                             <div
@@ -357,7 +357,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                                 style={{ padding: "10px", cursor: "pointer", borderBottom: "1px solid #333", display: "flex", flexDirection: "column" }}
                                 className="canned-item"
                             >
-                                <div style={{ fontWeight: "bold", color: "#00a884" }}>/{c.Shortcut} <span style={{ color: "#fff" }}>{c.Title}</span></div>
+                                <div style={{ fontWeight: "bold", color: "#00a884" }}>/{c.Shortcut} <span style={{ color: "var(--text-primary)" }}>{c.Title}</span></div>
                                 <div style={{ fontSize: "0.85em", color: "#ccc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.Content}</div>
                             </div>
                         ))}
@@ -466,7 +466,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                         <button
                             type="button"
                             onClick={() => setShowAssignModal(false)}
-                            style={{ width: "100%", padding: 10, background: "transparent", border: "1px solid var(--border)", color: "white", borderRadius: 5, cursor: "pointer" }}
+                            style={{ width: "100%", padding: 10, background: "transparent", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: 5, cursor: "pointer" }}
                         >
                             Cancelar
                         </button>
@@ -479,7 +479,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                     position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
                     background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999
                 }} onClick={(e) => { if (e.target === e.currentTarget) setShowContactModal(false); }}>
-                    <div style={{ background: "#202c33", padding: 30, borderRadius: 16, width: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+                    <div style={{ background: "var(--bg-secondary)", padding: 30, borderRadius: 16, width: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
                         <h3 style={{ marginTop: 0, marginBottom: 24, display: "flex", alignItems: "center", gap: 10, fontSize: "1.2rem", color: "#e9edef" }}>
                             <UserPlus size={22} color="#00a884" /> Salvar Contato
                         </h3>
@@ -492,7 +492,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                                     value={contactForm.name}
                                     onChange={e => setContactForm({ ...contactForm, name: e.target.value })}
                                     autoFocus
-                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#2a3942", color: "#e9edef", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}
                                 />
                             </div>
                             <div>
@@ -500,7 +500,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                                 <input
                                     value={contactForm.phone}
                                     readOnly
-                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#1e2a31", color: "#8696a0", fontSize: 14, outline: "none", cursor: "not-allowed", boxSizing: "border-box" }}
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-hover)", color: "var(--text-secondary)", fontSize: 14, outline: "none", cursor: "not-allowed", boxSizing: "border-box" }}
                                 />
                             </div>
                             <div>
@@ -512,7 +512,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                                     placeholder="email@exemplo.com"
                                     value={contactForm.email}
                                     onChange={e => setContactForm({ ...contactForm, email: e.target.value })}
-                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#2a3942", color: "#e9edef", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}
                                 />
                             </div>
                             <div>
@@ -523,7 +523,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                                     placeholder="Nome da empresa"
                                     value={contactForm.company}
                                     onChange={e => setContactForm({ ...contactForm, company: e.target.value })}
-                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#2a3942", color: "#e9edef", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, outline: "none", boxSizing: "border-box" }}
                                 />
                             </div>
                         </div>
@@ -531,8 +531,8 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                         <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
                             <button
                                 onClick={() => setShowContactModal(false)}
-                                style={{ flex: 1, padding: "12px 16px", background: "transparent", border: "1px solid #374751", color: "#e9edef", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 500, transition: "background 0.2s" }}
-                                onMouseEnter={e => (e.currentTarget.style.background = "#2a3942")}
+                                style={{ flex: 1, padding: "12px 16px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 500, transition: "background 0.2s" }}
+                                onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
                                 onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                             >
                                 Cancelar

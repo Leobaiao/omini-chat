@@ -133,6 +133,11 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
 
   useEffect(() => {
     api.get("/api/profile").then(res => setProfile(res.data)).catch(console.error);
+    // Initialize theme from localStorage
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "light") {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
   }, []);
 
   const handleStartChat = async (contact: any) => {
@@ -211,9 +216,7 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
               <Bot size={24} />
             </button>
           )}
-          {(role === "ADMIN" || role === "SUPERADMIN") && (
-            <NavIcon icon={SettingsIcon} label="Config" active={currentPath.startsWith("/settings")} onClick={() => navigate("/settings")} />
-          )}
+          <NavIcon icon={SettingsIcon} label="Config" active={currentPath.startsWith("/settings")} onClick={() => navigate("/settings")} />
           <button onClick={onLogout} style={{ background: "none", border: "none", cursor: "pointer", opacity: 0.7, padding: 10, color: "var(--text-secondary)" }} title="Sair">
             <LogOut size={24} />
           </button>
@@ -234,7 +237,7 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
 
           <Route path="/users" element={<Users token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} />} />
 
-          <Route path="/settings" element={(role === "ADMIN" || role === "SUPERADMIN") ? <Settings token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} /> : <Navigate to="/chat" />} />
+          <Route path="/settings" element={<Settings token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} />} />
           <Route path="/queues" element={<QueueSettings onBack={() => navigate("/chat")} />} />
 
           {role === "SUPERADMIN" && (

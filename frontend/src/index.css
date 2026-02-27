@@ -21,6 +21,21 @@
   --danger: #ea4335;
 }
 
+[data-theme="light"] {
+  --bg-primary: #f0f2f5;
+  --bg-secondary: #ffffff;
+  --bg-hover: #e9edef;
+  --bg-active: #d9dbdf;
+  --border: #d1d7db;
+  --text-primary: #111b21;
+  --text-secondary: #667781;
+  --accent: #00a884;
+  --accent-hover: #06cf9c;
+  --bubble-in: #ffffff;
+  --bubble-out: #d9fdd3;
+  --danger: #ea4335;
+}
+
 html,
 body,
 #root {

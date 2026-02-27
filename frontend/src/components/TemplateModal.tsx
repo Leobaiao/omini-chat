@@ -100,18 +100,18 @@ export function TemplateModal({ onClose, onSend }: TemplateModalProps) {
             display: "flex", alignItems: "center", justifyContent: "center"
         }}>
             <div style={{
-                width: "500px", background: "#202c33", borderRadius: "8px",
+                width: "500px", background: "var(--bg-secondary)", borderRadius: "8px",
                 padding: "20px", display: "flex", flexDirection: "column", gap: "15px",
                 height: "80vh", maxHeight: "600px"
             }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <h2 style={{ color: "#e9edef", margin: 0 }}>Modelos de Mensagem (HSM)</h2>
+                    <h2 style={{ color: "var(--text-primary)", margin: 0 }}>Modelos de Mensagem (HSM)</h2>
                     <button onClick={onClose} style={{ background: "none", border: "none", color: "#8696a0", cursor: "pointer", fontSize: "1.2rem" }}>✕</button>
                 </div>
 
-                <div style={{ display: "flex", gap: "10px", borderBottom: "1px solid #333", paddingBottom: "10px" }}>
-                    <button onClick={() => setView("SELECT")} style={{ flex: 1, padding: "8px", background: view === "SELECT" ? "#00a884" : "transparent", borderBottom: view === "SELECT" ? "2px solid #00a884" : "1px solid #333", color: "white", cursor: "pointer", border: "none", borderRadius: "4px" }}>Selecionar</button>
-                    <button onClick={() => setView("MANAGE")} style={{ flex: 1, padding: "8px", background: view === "MANAGE" ? "#00a884" : "transparent", borderBottom: view === "MANAGE" ? "2px solid #00a884" : "1px solid #333", color: "white", cursor: "pointer", border: "none", borderRadius: "4px" }}>Gerenciar</button>
+                <div style={{ display: "flex", gap: "10px", borderBottom: "1px solid var(--border)", paddingBottom: "10px" }}>
+                    <button onClick={() => setView("SELECT")} style={{ flex: 1, padding: "8px", background: view === "SELECT" ? "#00a884" : "transparent", borderBottom: view === "SELECT" ? "2px solid #00a884" : "1px solid var(--border)", color: "var(--text-primary)", cursor: "pointer", border: "none", borderRadius: "4px" }}>Selecionar</button>
+                    <button onClick={() => setView("MANAGE")} style={{ flex: 1, padding: "8px", background: view === "MANAGE" ? "#00a884" : "transparent", borderBottom: view === "MANAGE" ? "2px solid #00a884" : "1px solid var(--border)", color: "var(--text-primary)", cursor: "pointer", border: "none", borderRadius: "4px" }}>Gerenciar</button>
                 </div>
 
                 <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -122,23 +122,23 @@ export function TemplateModal({ onClose, onSend }: TemplateModalProps) {
                                     {loading ? <p style={{ color: "#888" }}>Carregando...</p> : null}
                                     {templates.length === 0 && !loading && <p style={{ color: "#888" }}>Nenhum template encontrado.</p>}
                                     {templates.map(t => (
-                                        <div key={t.TemplateId} onClick={() => handleSelect(t)} style={{ padding: "10px", background: "#111b21", borderRadius: "6px", cursor: "pointer", border: "1px solid #333" }}>
-                                            <div style={{ fontWeight: "bold", color: "#e9edef" }}>{t.Name}</div>
-                                            <div style={{ fontSize: "0.9em", color: "#8696a0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.Content}</div>
+                                        <div key={t.TemplateId} onClick={() => handleSelect(t)} style={{ padding: "10px", background: "var(--bg-primary)", borderRadius: "6px", cursor: "pointer", border: "1px solid var(--border)" }}>
+                                            <div style={{ fontWeight: "bold", color: "var(--text-primary)" }}>{t.Name}</div>
+                                            <div style={{ fontSize: "0.9em", color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.Content}</div>
                                         </div>
                                     ))}
                                 </>
                             ) : (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                                     <button onClick={() => setSelectedTemplate(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#00a884", cursor: "pointer" }}>← Voltar</button>
-                                    <div style={{ padding: "10px", background: "#111b21", borderRadius: "6px" }}>
-                                        <div style={{ fontWeight: "bold", color: "#e9edef", marginBottom: "5px" }}>{selectedTemplate.Name}</div>
-                                        <div style={{ color: "#d1d7db", whiteSpace: "pre-wrap" }}>{selectedTemplate.Content}</div>
+                                    <div style={{ padding: "10px", background: "var(--bg-primary)", borderRadius: "6px" }}>
+                                        <div style={{ fontWeight: "bold", color: "var(--text-primary)", marginBottom: "5px" }}>{selectedTemplate.Name}</div>
+                                        <div style={{ color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>{selectedTemplate.Content}</div>
                                     </div>
 
                                     {selectedTemplate.Variables.length > 0 && (
                                         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                                            <label style={{ color: "#8696a0" }}>Preencha as variáveis:</label>
+                                            <label style={{ color: "var(--text-secondary)" }}>Preencha as variáveis:</label>
                                             {selectedTemplate.Variables.map((v, i) => (
                                                 <div key={i}>
                                                     <span style={{ color: "#00a884", fontSize: "0.9em" }}>{`{{${v}}}`}</span>
@@ -150,7 +150,7 @@ export function TemplateModal({ onClose, onSend }: TemplateModalProps) {
                                                             setVarValues(newVals);
                                                         }}
                                                         placeholder={`Valor para ${v}`}
-                                                        style={{ width: "100%", padding: "8px", marginTop: "5px", background: "#2a3942", border: "none", color: "white", borderRadius: "4px" }}
+                                                        style={{ width: "100%", padding: "8px", marginTop: "5px", background: "var(--bg-primary)", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: "4px" }}
                                                     />
                                                 </div>
                                             ))}
@@ -167,26 +167,26 @@ export function TemplateModal({ onClose, onSend }: TemplateModalProps) {
 
                     {view === "MANAGE" && (
                         <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-                            <div style={{ padding: "10px", background: "#111b21", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                                <h3 style={{ margin: 0, color: "#fff" }}>Novo Template</h3>
-                                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nome do Template" style={{ padding: "8px", background: "#2a3942", border: "none", color: "white", borderRadius: "4px" }} />
+                            <div style={{ padding: "10px", background: "var(--bg-primary)", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                                <h3 style={{ margin: 0, color: "var(--text-primary)" }}>Novo Template</h3>
+                                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nome do Template" style={{ padding: "8px", background: "var(--bg-hover)", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: "4px" }} />
                                 <textarea
                                     value={newContent}
                                     onChange={e => setNewContent(e.target.value)}
                                     placeholder="Conteúdo (use {{1}}, {{nome}} para variáveis)"
                                     rows={4}
-                                    style={{ padding: "8px", background: "#2a3942", border: "none", color: "white", borderRadius: "4px", resize: "vertical" }}
+                                    style={{ padding: "8px", background: "var(--bg-hover)", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: "4px", resize: "vertical" }}
                                 />
-                                <button onClick={handleCreate} style={{ padding: "8px", background: "#00a884", border: "none", color: "white", borderRadius: "4px", cursor: "pointer" }}>Criar</button>
+                                <button onClick={handleCreate} style={{ padding: "8px", background: "#00a884", border: "none", color: "#fff", borderRadius: "4px", cursor: "pointer" }}>Criar</button>
                             </div>
 
-                            <div style={{ borderTop: "1px solid #333", paddingTop: "10px" }}>
-                                <h3 style={{ margin: "0 0 10px 0", color: "#fff" }}>Existentes</h3>
+                            <div style={{ borderTop: "1px solid var(--border)", paddingTop: "10px" }}>
+                                <h3 style={{ margin: "0 0 10px 0", color: "var(--text-primary)" }}>Existentes</h3>
                                 {templates.map(t => (
-                                    <div key={t.TemplateId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", borderBottom: "1px solid #333" }}>
+                                    <div key={t.TemplateId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", borderBottom: "1px solid var(--border)" }}>
                                         <div style={{ overflow: "hidden" }}>
-                                            <div style={{ fontWeight: "bold", color: "#e9edef" }}>{t.Name}</div>
-                                            <div style={{ fontSize: "0.8em", color: "#8696a0" }}>{t.Variables.length} variáveis</div>
+                                            <div style={{ fontWeight: "bold", color: "var(--text-primary)" }}>{t.Name}</div>
+                                            <div style={{ fontSize: "0.8em", color: "var(--text-secondary)" }}>{t.Variables.length} variáveis</div>
                                         </div>
                                         <button onClick={() => handleDelete(t.TemplateId)} style={{ padding: "5px 10px", background: "#ea4335", border: "none", color: "white", borderRadius: "4px", cursor: "pointer" }}>🗑️</button>
                                     </div>

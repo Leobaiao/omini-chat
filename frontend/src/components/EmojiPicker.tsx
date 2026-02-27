@@ -58,7 +58,7 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
             right: "20px", // Adjust based on layout
             width: "300px",
             height: "300px",
-            background: "#202c33",
+            background: "var(--bg-secondary)",
             border: "1px solid #333",
             borderRadius: "8px",
             display: "flex",

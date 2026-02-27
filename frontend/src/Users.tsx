@@ -290,7 +290,7 @@ export function Users({ token, onBack, role }: Props) {
                                     value={name}
                                     onChange={e => setName(e.target.value)}
                                     placeholder="Ex: João Silva"
-                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "white" }}
+                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text-primary)" }}
                                 />
                             </div>
 
@@ -302,7 +302,7 @@ export function Users({ token, onBack, role }: Props) {
                                     value={email}
                                     onChange={e => setEmail(e.target.value)}
                                     placeholder="joao@empresa.com"
-                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "white" }}
+                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text-primary)" }}
                                 />
                             </div>
 
@@ -314,7 +314,7 @@ export function Users({ token, onBack, role }: Props) {
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
                                     placeholder={editingUser ? "Deixe vazio para manter" : "••••••"}
-                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "white" }}
+                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text-primary)" }}
                                 />
                             </div>
 
@@ -323,7 +323,7 @@ export function Users({ token, onBack, role }: Props) {
                                 <select
                                     value={userRole}
                                     onChange={e => setUserRole(e.target.value)}
-                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "white", cursor: "pointer" }}
+                                    style={{ width: "100%", marginTop: 8, background: "var(--bg-primary)", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", color: "var(--text-primary)", cursor: "pointer" }}
                                 >
                                     <option value="AGENT">Agente (Atendimento)</option>
                                     <option value="ADMIN">Administrador (Gestão)</option>
@@ -331,7 +331,7 @@ export function Users({ token, onBack, role }: Props) {
                             </div>
 
                             <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-                                <button type="button" onClick={closeModal} className="btn" style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid var(--border)", color: "white", borderRadius: 12 }}>
+                                <button type="button" onClick={closeModal} className="btn" style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid var(--border)", color: "var(--text-primary)", borderRadius: 12 }}>
                                     Cancelar
                                 </button>
                                 <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: "12px", borderRadius: 12 }}>

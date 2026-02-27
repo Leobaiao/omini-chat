@@ -97,7 +97,7 @@ export function Sidebar({ setView }: { setView: (view: any) => void }) {
                     placeholder="Buscar conversa…"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    style={{ width: "100%", padding: "10px 10px 10px 34px", borderRadius: 8, border: "none", background: "#2a3942", color: "white" }}
+                    style={{ width: "100%", padding: "10px 10px 10px 34px", borderRadius: 8, border: "none", background: "var(--bg-hover)", color: "var(--text-primary)" }}
                 />
             </div>
 
@@ -121,7 +121,7 @@ export function Sidebar({ setView }: { setView: (view: any) => void }) {
                             <span className="title" style={{ fontWeight: 600 }}>{c.Title || formatPhone(c.ExternalUserId)}</span>
                             <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
                                 {c.QueueName && (
-                                    <span style={{ fontSize: "0.65rem", background: "#334155", color: "#94a3b8", padding: "1px 4px", borderRadius: 3 }}>
+                                    <span style={{ fontSize: "0.65rem", background: "var(--bg-hover)", color: "var(--text-secondary)", padding: "1px 4px", borderRadius: 3 }}>
                                         {c.QueueName}
                                     </span>
                                 )}

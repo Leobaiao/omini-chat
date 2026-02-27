@@ -14,6 +14,9 @@ export function Settings({ token, onBack, role }: Props) {
     const [avatar, setAvatar] = useState("");
     const [position, setPosition] = useState("");
 
+    // Theme
+    const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+
     // Config states
     const [defaultProvider, setDefaultProvider] = useState("GTI");
     const [instanceId, setInstanceId] = useState("");
@@ -25,6 +28,12 @@ export function Settings({ token, onBack, role }: Props) {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState("");
     const isAdmin = role === "ADMIN" || role === "SUPERADMIN";
+
+    function toggleTheme(newTheme: string) {
+        setTheme(newTheme);
+        localStorage.setItem("theme", newTheme);
+        document.documentElement.setAttribute("data-theme", newTheme === "light" ? "light" : "");
+    }
 
     useEffect(() => {
         // Load configurations (Only for admins)
@@ -121,12 +130,38 @@ export function Settings({ token, onBack, role }: Props) {
                 <h2 style={{ fontSize: "1.8rem", fontWeight: 700 }}>Configurações</h2>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 30 }}>
-                {/* Perfil */}
-                <div style={{ background: "var(--bg-secondary)", padding: 30, borderRadius: 16, border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 24 }}>
-                    <h3 style={{ fontSize: 18, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 10 }}>
-                        👤 Perfil Pessoal
-                    </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 24 }}>
+                {/* Perfil + Aparência */}
+                <div style={{ background: "var(--bg-secondary)", padding: 30, borderRadius: 16, border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 20 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <h3 style={{ fontSize: 18, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 10, margin: 0 }}>
+                            👤 Perfil Pessoal
+                        </h3>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg-primary)", borderRadius: 8, padding: 3 }}>
+                            <button
+                                onClick={() => toggleTheme("dark")}
+                                style={{
+                                    padding: "6px 14px", borderRadius: 6, cursor: "pointer", transition: "all 0.2s",
+                                    background: theme === "dark" ? "var(--accent)" : "transparent",
+                                    border: "none", color: theme === "dark" ? "#fff" : "var(--text-secondary)",
+                                    fontSize: "0.8rem", fontWeight: 600, display: "flex", alignItems: "center", gap: 5
+                                }}
+                            >
+                                🌙 Escuro
+                            </button>
+                            <button
+                                onClick={() => toggleTheme("light")}
+                                style={{
+                                    padding: "6px 14px", borderRadius: 6, cursor: "pointer", transition: "all 0.2s",
+                                    background: theme === "light" ? "var(--accent)" : "transparent",
+                                    border: "none", color: theme === "light" ? "#fff" : "var(--text-secondary)",
+                                    fontSize: "0.8rem", fontWeight: 600, display: "flex", alignItems: "center", gap: 5
+                                }}
+                            >
+                                ☀️ Claro
+                            </button>
+                        </div>
+                    </div>
 
                     {msg && (
                         <div style={{
@@ -151,7 +186,7 @@ export function Settings({ token, onBack, role }: Props) {
                                 value={name}
                                 onChange={e => setName(e.target.value)}
                                 placeholder="Seu nome"
-                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                             />
                         </div>
 
@@ -162,7 +197,7 @@ export function Settings({ token, onBack, role }: Props) {
                                 value={position}
                                 onChange={e => setPosition(e.target.value)}
                                 placeholder="Ex: Atendente, Gerente..."
-                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                             />
                         </div>
 
@@ -173,7 +208,7 @@ export function Settings({ token, onBack, role }: Props) {
                                 value={avatar}
                                 onChange={e => setAvatar(e.target.value)}
                                 placeholder="https://..."
-                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                             />
                         </div>
 
@@ -184,7 +219,7 @@ export function Settings({ token, onBack, role }: Props) {
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
                                 placeholder="Mínimo 6 caracteres"
-                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                             />
                             <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: 6 }}>Deixe em branco para não alterar.</p>
                         </div>
@@ -209,7 +244,7 @@ export function Settings({ token, onBack, role }: Props) {
                                     <select
                                         value={selectedConnectorId}
                                         onChange={e => handleInstanceChange(e.target.value)}
-                                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                                     >
                                         {instances.map(inst => (
                                             <option key={inst.ConnectorId} value={inst.ConnectorId}>
@@ -229,7 +264,7 @@ export function Settings({ token, onBack, role }: Props) {
                                         value={instanceId}
                                         onChange={e => setInstanceId(e.target.value)}
                                         placeholder="Ex: instance_12345"
-                                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                                     />
                                 </div>
 
@@ -240,7 +275,7 @@ export function Settings({ token, onBack, role }: Props) {
                                         value={tokenVal}
                                         onChange={e => setTokenVal(e.target.value)}
                                         placeholder="Ex: abc-123-xyz"
-                                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "white" }}
+                                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-primary)", color: "var(--text-primary)" }}
                                     />
                                 </div>
                             </div>

@@ -26,8 +26,8 @@ export function Dashboard({ token, onBack }: { token: string; onBack: () => void
             });
     }, []);
 
-    if (loading) return <div style={{ padding: 20, color: "white" }}>Carregando métricas...</div>;
-    if (!stats) return <div style={{ padding: 20, color: "white" }}>Erro ao carregar dashboard.</div>;
+    if (loading) return <div style={{ padding: 20, color: "var(--text-primary)" }}>Carregando métricas...</div>;
+    if (!stats) return <div style={{ padding: 20, color: "var(--text-primary)" }}>Erro ao carregar dashboard.</div>;
 
     const cards = [
         { label: "Conversas Abertas", value: stats.open, color: "#00a884", icon: <MessageSquareText size={32} color="#00a884" /> },
