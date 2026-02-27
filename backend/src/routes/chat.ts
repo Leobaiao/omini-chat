@@ -10,20 +10,30 @@ const router = Router();
 router.use(authMw);
 
 // Helper para validar se o usuário tem acesso à conversa
-async function checkConversationAccess(user: any, conversationId: string) {
-    if (user.role === 'ADMIN' || user.role === 'SUPERADMIN') return true;
-
+async function checkConversationAccess(user: any, conversationId: string): Promise<{ allowed: boolean, tenantId: string | null }> {
     const pool = await getPool();
     const r = await pool.request()
-        .input("tenantId", user.tenantId)
         .input("conversationId", conversationId)
-        .query("SELECT AssignedUserId FROM omni.Conversation WHERE ConversationId = @conversationId AND TenantId = @tenantId");
+        .query("SELECT TenantId, AssignedUserId FROM omni.Conversation WHERE ConversationId = @conversationId");
 
-    if (r.recordset.length === 0) return false;
-    const ownerId = r.recordset[0].AssignedUserId;
+    if (r.recordset.length === 0) return { allowed: false, tenantId: null };
 
-    // Acesso permitido se for o dono OU se estiver sem dono (na fila)
-    return ownerId === null || ownerId === user.userId;
+    const conv = r.recordset[0];
+    const ownerId = conv.AssignedUserId;
+    const convTenantId = conv.TenantId;
+
+    if (user.role === 'ADMIN' || user.role === 'SUPERADMIN') {
+        // SUPERADMIN sees everything, ADMIN only if same tenant
+        if (user.role === 'SUPERADMIN' || convTenantId === user.tenantId) {
+            return { allowed: true, tenantId: convTenantId };
+        }
+    }
+
+    if (convTenantId !== user.tenantId) return { allowed: false, tenantId: null };
+
+    // AGENT access check
+    const allowed = ownerId === null || ownerId === user.userId;
+    return { allowed, tenantId: convTenantId };
 }
 
 router.get("/", async (req, res, next) => {
@@ -93,7 +103,12 @@ router.post("/", validateBody(z.object({
 router.delete("/:id", async (req, res, next) => {
     try {
         const user = (req as any).user;
-        await deleteConversation(user.tenantId, req.params.id);
+        const conversationId = req.params.id;
+
+        const { allowed, tenantId } = await checkConversationAccess(user, conversationId);
+        if (!allowed) return res.status(403).json({ error: "Access denied" });
+
+        await deleteConversation(tenantId || "", conversationId);
         res.json({ ok: true });
     } catch (error) {
         next(error);
@@ -105,14 +120,15 @@ router.get("/:id/messages", async (req, res, next) => {
         const user = (req as any).user;
         const conversationId = req.params.id;
 
-        if (!(await checkConversationAccess(user, conversationId))) {
+        const { allowed, tenantId } = await checkConversationAccess(user, conversationId);
+        if (!allowed) {
             return res.status(403).json({ error: "Você não tem permissão para acessar esta conversa." });
         }
 
         const pool = await getPool();
         const r = await pool.request()
             .input("conversationId", conversationId)
-            .input("tenantId", user.tenantId)
+            .input("tenantId", tenantId)
             .query(`
         SELECT MessageId, Body, Direction, SenderExternalId, MediaType, MediaUrl, Status, CreatedAt
         FROM omni.Message
@@ -131,14 +147,15 @@ router.post("/:id/reply", validateBody(z.object({ text: z.string().min(1) })), a
         const { text } = req.body;
         const user = (req as any).user;
 
-        if (!(await checkConversationAccess(user, conversationId))) {
+        const { allowed, tenantId } = await checkConversationAccess(user, conversationId);
+        if (!allowed) {
             return res.status(403).json({ error: "Você não tem permissão para responder nesta conversa." });
         }
 
         const pool = await getPool();
         const r = await pool.request()
             .input("conversationId", conversationId)
-            .input("tenantId", user.tenantId)
+            .input("tenantId", tenantId)
             .query(`
         SELECT
           etm.ExternalUserId,
@@ -174,13 +191,21 @@ router.post("/:id/reply", validateBody(z.object({ text: z.string().min(1) })), a
 
         const io = req.app.get("io");
         if (io) {
-            io.to(`tenant:${user.tenantId}`).emit("message:new", {
+            // Also emit to specific conversation room
+            io.to(conversationId).emit("message:new", {
                 conversationId,
                 senderExternalId: "agent",
                 text,
                 direction: "OUT"
             });
-            io.to(`tenant:${user.tenantId}`).emit("conversation:updated", {
+            // Emit to the conversation's tenant room
+            io.to(`tenant:${tenantId}`).emit("message:new", {
+                conversationId,
+                senderExternalId: "agent",
+                text,
+                direction: "OUT"
+            });
+            io.to(`tenant:${tenantId}`).emit("conversation:updated", {
                 conversationId,
                 lastMessage: text,
                 direction: "OUT",
@@ -198,17 +223,22 @@ router.post("/:id/status", validateBody(z.object({ status: z.enum(["OPEN", "RESO
     try {
         const user = (req as any).user;
         const { status } = req.body;
-        const pool = await getPool();
+        const conversationId = req.params.id;
 
+        const { allowed, tenantId } = await checkConversationAccess(user, conversationId);
+        if (!allowed) return res.status(403).json({ error: "Access denied" });
+
+        const pool = await getPool();
         await pool.request()
-            .input("tenantId", user.tenantId)
-            .input("conversationId", req.params.id)
+            .input("tenantId", tenantId)
+            .input("conversationId", conversationId)
             .input("status", status)
             .query("UPDATE omni.Conversation SET Status = @status WHERE TenantId = @tenantId AND ConversationId = @conversationId");
 
         const io = req.app.get("io");
         if (io) {
-            io.to(`tenant:${user.tenantId}`).emit("conversation:updated", {
+            io.to(conversationId).emit("conversation:updated", { conversationId, timestamp: new Date().toISOString() });
+            io.to(`tenant:${tenantId}`).emit("conversation:updated", {
                 conversationId: req.params.id,
                 timestamp: new Date().toISOString()
             });
@@ -227,11 +257,17 @@ router.post("/:id/assign", validateBody(z.object({
     try {
         const user = (req as any).user;
         const { queueId, userId } = req.body;
-        await assignConversation(user.tenantId, req.params.id, queueId || null, userId || null);
+        const conversationId = req.params.id;
+
+        const { allowed, tenantId } = await checkConversationAccess(user, conversationId);
+        if (!allowed) return res.status(403).json({ error: "Access denied" });
+
+        await assignConversation(tenantId || "", conversationId, queueId || null, userId || null);
 
         const io = req.app.get("io");
         if (io) {
-            io.to(`tenant:${user.tenantId}`).emit("conversation:updated", {
+            io.to(conversationId).emit("conversation:updated", { conversationId, timestamp: new Date().toISOString() });
+            io.to(`tenant:${tenantId}`).emit("conversation:updated", {
                 conversationId: req.params.id,
                 timestamp: new Date().toISOString()
             });
@@ -251,15 +287,19 @@ router.post("/:id/reassign-connector", async (req, res, next) => {
 
         const user = (req as any).user;
         const conversationId = req.params.id;
+
+        const { allowed, tenantId } = await checkConversationAccess(user, conversationId);
+        if (!allowed) return res.status(403).json({ error: "Access denied" });
+
         const pool = await getPool();
 
         const t = await pool.request()
-            .input("tenantId", user.tenantId)
+            .input("tenantId", tenantId)
             .query("SELECT DefaultProvider FROM omni.Tenant WHERE TenantId=@tenantId");
         const defaultProvider = t.recordset[0]?.DefaultProvider || "GTI";
 
         const c = await pool.request()
-            .input("tenantId", user.tenantId)
+            .input("tenantId", tenantId)
             .input("provider", defaultProvider)
             .query(`
         SELECT TOP 1 cc.ConnectorId
@@ -273,7 +313,7 @@ router.post("/:id/reassign-connector", async (req, res, next) => {
 
         await pool.request()
             .input("conversationId", conversationId)
-            .input("tenantId", user.tenantId)
+            .input("tenantId", tenantId)
             .input("newConnectorId", newConnectorId)
             .query(`
         UPDATE omni.ExternalThreadMap

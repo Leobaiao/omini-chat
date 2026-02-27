@@ -51,6 +51,17 @@ router.post("/whatsapp/:provider/:connectorId/*", async (req, res, next) => {
 
         const io = req.app.get("io");
         if (io) {
+            // Emit to specific conversation room (for cross-tenant monitoring/SUPERADMIN)
+            io.to(conversationId).emit("message:new", {
+                conversationId,
+                senderExternalId: inbound.externalUserId,
+                text: inbound.text ?? `[${inbound.mediaType}]`,
+                mediaType: inbound.mediaType,
+                mediaUrl: inbound.mediaUrl,
+                direction: "IN"
+            });
+
+            // Keep emitting to tenant room for sidebar updates
             io.to(`tenant:${inbound.tenantId}`).emit("message:new", {
                 conversationId,
                 senderExternalId: inbound.externalUserId,

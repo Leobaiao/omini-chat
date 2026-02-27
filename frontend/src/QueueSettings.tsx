@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft, Plus, Users, Trash2 } from "lucide-react";
 
 import type { Queue } from "../../shared/types";
@@ -54,6 +54,17 @@ export function QueueSettings({ onBack }: { onBack: () => void }) {
         }
     };
 
+    const token = localStorage.getItem("token");
+    const role = useMemo(() => {
+        if (!token) return "AGENT";
+        try {
+            const payload = JSON.parse(atob(token.split(".")[1]));
+            return payload.role;
+        } catch { return "AGENT"; }
+    }, [token]);
+
+    const isAdmin = role === "ADMIN" || role === "SUPERADMIN";
+
     return (
         <div style={{ padding: 30, color: "var(--text-primary)", overflowY: "auto", flex: 1 }}>
 
@@ -67,33 +78,35 @@ export function QueueSettings({ onBack }: { onBack: () => void }) {
                         <Users size={28} color="#00a884" /> Gestão de Filas
                     </h1>
                     <p style={{ opacity: 0.7, margin: "5px 0 0 0", fontSize: "0.95rem" }}>
-                        Crie departamentos (como Vendas, Suporte) para organizar o atendimento.
+                        {isAdmin ? "Crie departamentos para organizar o atendimento." : "Visualize os departamentos ativos para o atendimento."}
                     </p>
                 </div>
             </div>
 
             <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
-                {/* Formulário Criar Nova Fila */}
-                <div className="login-card" style={{ flex: "1 1 300px", margin: 0 }}>
-                    <h3 style={{ margin: "0 0 15px 0", color: "var(--text-primary)" }}>Nova Fila</h3>
-                    <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 15 }}>
-                        <div className="field">
-                            <label>Nome do Departamento</label>
-                            <input
-                                placeholder="ex: Suporte Técnico"
-                                value={newName}
-                                onChange={e => setNewName(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
-                        <button type="submit" className="btn btn-primary" disabled={loading || !newName.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                            <Plus size={18} /> {loading ? "Criando..." : "Criar Fila"}
-                        </button>
-                    </form>
-                </div>
+                {/* Formulário Criar Nova Fila (Apenas Admin) */}
+                {isAdmin && (
+                    <div className="login-card" style={{ flex: "1 1 300px", margin: 0 }}>
+                        <h3 style={{ margin: "0 0 15px 0", color: "var(--text-primary)" }}>Nova Fila</h3>
+                        <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+                            <div className="field">
+                                <label>Nome do Departamento</label>
+                                <input
+                                    placeholder="ex: Suporte Técnico"
+                                    value={newName}
+                                    onChange={e => setNewName(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            <button type="submit" className="btn btn-primary" disabled={loading || !newName.trim()} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <Plus size={18} /> {loading ? "Criando..." : "Criar Fila"}
+                            </button>
+                        </form>
+                    </div>
+                )}
 
                 {/* Lista de Filas */}
-                <div style={{ flex: "2 1 400px", display: "flex", flexDirection: "column", gap: 15 }}>
+                <div style={{ flex: isAdmin ? "2 1 400px" : "1 1 100%", display: "flex", flexDirection: "column", gap: 15 }}>
                     {items.length === 0 && (
                         <div style={{ padding: 30, textAlign: "center", background: "var(--bg-secondary)", borderRadius: 12, border: "1px dashed var(--border)", color: "var(--text-secondary)" }}>
                             Nenhuma fila cadastrada ainda.
@@ -116,14 +129,16 @@ export function QueueSettings({ onBack }: { onBack: () => void }) {
                                     Status: {item.IsActive ? "Ativa" : "Inativa"}
                                 </div>
                             </div>
-                            <button
-                                onClick={() => handleDelete(item.QueueId, item.Name)}
-                                className="icon-btn"
-                                title="Excluir Fila"
-                                style={{ color: "#ea4335" }}
-                            >
-                                <Trash2 size={20} />
-                            </button>
+                            {isAdmin && (
+                                <button
+                                    onClick={() => handleDelete(item.QueueId, item.Name)}
+                                    className="icon-btn"
+                                    title="Excluir Fila"
+                                    style={{ color: "#ea4335" }}
+                                >
+                                    <Trash2 size={20} />
+                                </button>
+                            )}
                         </div>
                     ))}
                 </div>

@@ -452,12 +452,13 @@ router.post("/users", validateBody(z.object({
             const rUser = await transaction.request()
                 .input("tenantId", body.tenantId)
                 .input("email", body.email)
+                .input("name", body.name)
                 .input("hash", hash)
                 .input("role", body.role)
                 .query(`
-          INSERT INTO omni.[User] (TenantId, Email, PasswordHash, Role, IsActive)
+          INSERT INTO omni.[User] (TenantId, Email, DisplayName, PasswordHash, Role, IsActive)
           OUTPUT inserted.UserId
-          VALUES (@tenantId, @email, @hash, @role, 1)
+          VALUES (@tenantId, @email, @name, @hash, @role, 1)
         `);
             const newUserId = rUser.recordset[0].UserId;
 
@@ -502,11 +503,12 @@ router.put("/users/:id", validateBody(z.object({
                     .input("id", userId)
                     .input("tenantId", body.tenantId)
                     .input("email", body.email)
+                    .input("name", body.name)
                     .input("role", body.role)
                     .input("hash", hash)
                     .query(`
                         UPDATE omni.[User] 
-                        SET Email=@email, Role=@role, PasswordHash=@hash, TenantId=@tenantId
+                        SET Email=@email, DisplayName=@name, Role=@role, PasswordHash=@hash, TenantId=@tenantId
                         WHERE UserId=@id
                     `);
             } else {
@@ -514,10 +516,11 @@ router.put("/users/:id", validateBody(z.object({
                     .input("id", userId)
                     .input("tenantId", body.tenantId)
                     .input("email", body.email)
+                    .input("name", body.name)
                     .input("role", body.role)
                     .query(`
                         UPDATE omni.[User] 
-                        SET Email=@email, Role=@role, TenantId=@tenantId
+                        SET Email=@email, DisplayName=@name, Role=@role, TenantId=@tenantId
                         WHERE UserId=@id
                     `);
             }

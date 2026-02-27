@@ -55,7 +55,9 @@ export class GtiAdapter implements ChannelAdapter {
       text = msg.caption ?? msg.fileName ?? text;
     }
 
-    console.log(`[GTI] Mensagem de ${body.chat?.name ?? externalUserId}: ${type} "${text ?? '[media]'}"`);
+    console.log(`[GTI] Mensagem de ${body.chat?.name ?? externalUserId}: ${type} "${text ?? '[media]'}"}`);
+
+    const senderName = body.chat?.name || msg.senderName || undefined;
 
     return {
       tenantId: connector.TenantId,
@@ -64,6 +66,7 @@ export class GtiAdapter implements ChannelAdapter {
       externalChatId,
       externalUserId,
       externalMessageId: msg.id ?? msg.messageId ?? undefined,
+      senderName,
       text,
       mediaUrl,
       mediaType,

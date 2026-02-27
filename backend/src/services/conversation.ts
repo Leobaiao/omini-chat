@@ -8,7 +8,7 @@ import { NormalizedInbound } from "../adapters/types.js";
 export async function resolveConversationForInbound(inb: NormalizedInbound, connectorId: string, channelId: string) {
   const pool = await getPool();
 
-  // tenta achar map
+  // 1. Tenta achar pelo ExternalChatId + ConnectorId (match exato do webhook)
   const found = await pool.request()
     .input("tenantId", inb.tenantId)
     .input("connectorId", connectorId)
@@ -19,10 +19,46 @@ export async function resolveConversationForInbound(inb: NormalizedInbound, conn
       WHERE TenantId=@tenantId AND ConnectorId=@connectorId AND ExternalChatId=@externalChatId
     `);
 
-  if (found.recordset.length > 0) return found.recordset[0].ConversationId as string;
+  if (found.recordset.length > 0) {
+    const cid = found.recordset[0].ConversationId;
+    // Atualiza título com o nome do WhatsApp se disponível
+    if (inb.senderName) {
+      await pool.request()
+        .input("cid", cid)
+        .input("title", inb.senderName)
+        .query("UPDATE omni.Conversation SET Title = @title WHERE ConversationId = @cid AND Title LIKE 'WhatsApp%'");
+    }
+    return cid as string;
+  }
 
-  // cria conversa
-  const title = `WhatsApp • ${inb.externalUserId}`;
+  // 2. Fallback: busca pelo ExternalUserId (evita duplicar com conversas criadas manualmente)
+  const byUser = await pool.request()
+    .input("tenantId", inb.tenantId)
+    .input("externalUserId", inb.externalUserId)
+    .query(`
+      SELECT TOP 1 ConversationId
+      FROM omni.ExternalThreadMap
+      WHERE TenantId=@tenantId AND ExternalUserId=@externalUserId
+    `);
+
+  if (byUser.recordset.length > 0) {
+    // Atualiza o mapeamento com o ConnectorId e ExternalChatId corretos
+    const existingCid = byUser.recordset[0].ConversationId;
+    await pool.request()
+      .input("tenantId", inb.tenantId)
+      .input("externalUserId", inb.externalUserId)
+      .input("connectorId", connectorId)
+      .input("externalChatId", inb.externalChatId)
+      .query(`
+        UPDATE omni.ExternalThreadMap
+        SET ConnectorId = @connectorId, ExternalChatId = @externalChatId
+        WHERE TenantId = @tenantId AND ExternalUserId = @externalUserId
+      `);
+    return existingCid as string;
+  }
+
+  // 3. Cria conversa nova
+  const title = inb.senderName || `WhatsApp • ${inb.externalUserId}`;
   const created = await pool.request()
     .input("tenantId", inb.tenantId)
     .input("channelId", channelId)

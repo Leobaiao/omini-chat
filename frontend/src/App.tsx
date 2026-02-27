@@ -202,9 +202,7 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
           {/* Gestão e Apoio */}
           <NavIcon icon={BookOpen} label="Respostas Rápidas" active={currentPath.startsWith("/canned")} onClick={() => navigate("/canned")} />
           <NavIcon icon={UsersIcon} label="Minha Equipe" active={currentPath.startsWith("/users")} onClick={() => navigate("/users")} />
-          {(role === "ADMIN" || role === "SUPERADMIN") && (
-            <NavIcon icon={Search} label="Filas de Atendimento" active={currentPath.startsWith("/queues")} onClick={() => navigate("/queues")} />
-          )}
+          <NavIcon icon={Search} label="Filas de Atendimento" active={currentPath.startsWith("/queues")} onClick={() => navigate("/queues")} />
           <NavIcon icon={Ticket} label="Chamados" active={false} onClick={() => showToast("Módulo de Tickets em breve!", "info")} />
         </div>
         <div className="footer-items">
@@ -236,12 +234,8 @@ function MainLayout({ token, role, onLogout }: { token: string; role: string; on
 
           <Route path="/users" element={<Users token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} />} />
 
-          {(role === "ADMIN" || role === "SUPERADMIN") && (
-            <>
-              <Route path="/settings" element={<Settings token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} />} />
-              <Route path="/queues" element={<QueueSettings onBack={() => navigate("/chat")} />} />
-            </>
-          )}
+          <Route path="/settings" element={(role === "ADMIN" || role === "SUPERADMIN") ? <Settings token={token} onBack={() => navigate("/chat")} role={role || 'AGENT'} /> : <Navigate to="/chat" />} />
+          <Route path="/queues" element={<QueueSettings onBack={() => navigate("/chat")} />} />
 
           {role === "SUPERADMIN" && (
             <Route path="/superadmin" element={<SuperAdmin token={token} onBack={() => navigate("/chat")} />} />

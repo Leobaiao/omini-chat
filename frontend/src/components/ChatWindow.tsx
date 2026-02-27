@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { MessageCircleOff, ArrowLeft, Trash2, CheckCircle, RotateCcw, Users as UsersIcon, Zap, ChevronDown, Smile, FileText, Send } from "lucide-react";
+import { MessageCircleOff, ArrowLeft, Trash2, CheckCircle, RotateCcw, Users as UsersIcon, Zap, ChevronDown, Smile, FileText, Send, UserPlus } from "lucide-react";
 import { useChat } from "../contexts/ChatContext";
 import { AudioPlayer } from "./AudioPlayer";
 import { EmojiPicker } from "./EmojiPicker";
@@ -57,9 +57,27 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
     const [queuesToAssign, setQueuesToAssign] = useState<any[]>([]);
     const [assignTab, setAssignTab] = useState<"USERS" | "QUEUES">("USERS");
 
+    // Save Contact
+    const [contactExists, setContactExists] = useState(true); // default true to hide button until checked
+    const [showContactModal, setShowContactModal] = useState(false);
+    const [contactForm, setContactForm] = useState({ name: "", phone: "", email: "", company: "" });
+
     const userId = getUserIdFromToken();
 
     const selectedConversation = conversations.find((c) => c.ConversationId === selectedConversationId);
+
+    // Check if contact already exists when conversation changes
+    useEffect(() => {
+        if (!selectedConversation) { setContactExists(true); return; }
+        const phone = selectedConversation.ExternalUserId?.replace("@s.whatsapp.net", "") || "";
+        if (!phone) { setContactExists(true); return; }
+        api.get("/api/contacts", { params: { search: phone } })
+            .then(res => {
+                const list = Array.isArray(res.data) ? res.data : [];
+                setContactExists(list.some((c: any) => c.Phone?.includes(phone)));
+            })
+            .catch(() => setContactExists(true));
+    }, [selectedConversationId]);
 
     useEffect(() => {
         api.get<any[]>("/api/canned-responses")
@@ -215,8 +233,8 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                         </button>
                     )}
 
-                    {!selectedConversation.AssignedUserId && selectedConversation.QueueId && (
-                        <button onClick={() => handleAssign(null, userId)} style={{ padding: "5px 10px", background: "#00a884", border: "none", color: "white", borderRadius: 5, cursor: "pointer" }}>
+                    {!selectedConversation.AssignedUserId && (
+                        <button onClick={() => handleAssign(selectedConversation.QueueId || null, userId)} style={{ padding: "5px 10px", background: "#00a884", border: "none", color: "white", borderRadius: 5, cursor: "pointer" }}>
                             Pegar Atendimento
                         </button>
                     )}
@@ -231,6 +249,22 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                     {selectedConversation.Status === "OPEN" && (
                         <button onClick={openAssignModal} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: "#f0f2f5", border: "none", color: "#54656f", borderRadius: 5, cursor: "pointer", marginLeft: 10 }}>
                             <UsersIcon size={16} /> Transferir
+                        </button>
+                    )}
+
+                    {!contactExists && (
+                        <button
+                            onClick={() => {
+                                const phone = selectedConversation.ExternalUserId?.replace("@s.whatsapp.net", "") || "";
+                                const title = selectedConversation.Title || "";
+                                const name = title.startsWith("WhatsApp") ? phone : title;
+                                setContactForm({ name, phone, email: "", company: "" });
+                                setShowContactModal(true);
+                            }}
+                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "#f0f2f5", border: "none", color: "#54656f", borderRadius: 6, cursor: "pointer", fontWeight: 500 }}
+                            title="Salvar Contato"
+                        >
+                            <UserPlus size={16} /> Salvar Contato
                         </button>
                     )}
 
@@ -255,7 +289,7 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                     <div key={m.MessageId} className={`bubble-row ${m.Direction === "OUT" ? "out" : "in"}`}>
                         <div className="bubble">
                             {m.Direction === "IN" && (
-                                <div className="sender">{formatPhone(m.SenderExternalId) || "Cliente"}</div>
+                                <div className="sender">{selectedConversation.Title && !selectedConversation.Title.startsWith("WhatsApp") ? selectedConversation.Title : formatPhone(m.SenderExternalId) || "Cliente"}</div>
                             )}
                             {m.Direction === "OUT" && <div className="sender" style={{ color: "#8bb8a8" }}>Agente</div>}
 
@@ -436,6 +470,95 @@ export function ChatWindow({ setView, showToast }: { setView: (v: any) => void, 
                         >
                             Cancelar
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {showContactModal && (
+                <div style={{
+                    position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                    background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999
+                }} onClick={(e) => { if (e.target === e.currentTarget) setShowContactModal(false); }}>
+                    <div style={{ background: "#202c33", padding: 30, borderRadius: 16, width: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+                        <h3 style={{ marginTop: 0, marginBottom: 24, display: "flex", alignItems: "center", gap: 10, fontSize: "1.2rem", color: "#e9edef" }}>
+                            <UserPlus size={22} color="#00a884" /> Salvar Contato
+                        </h3>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                            <div>
+                                <label style={{ display: "block", marginBottom: 6, fontSize: "0.85rem", color: "#8696a0", fontWeight: 500 }}>Nome</label>
+                                <input
+                                    placeholder="Nome do contato"
+                                    value={contactForm.name}
+                                    onChange={e => setContactForm({ ...contactForm, name: e.target.value })}
+                                    autoFocus
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#2a3942", color: "#e9edef", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: "block", marginBottom: 6, fontSize: "0.85rem", color: "#8696a0", fontWeight: 500 }}>Telefone</label>
+                                <input
+                                    value={contactForm.phone}
+                                    readOnly
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#1e2a31", color: "#8696a0", fontSize: 14, outline: "none", cursor: "not-allowed", boxSizing: "border-box" }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: "block", marginBottom: 6, fontSize: "0.85rem", color: "#8696a0", fontWeight: 500 }}>
+                                    Email <span style={{ opacity: 0.6 }}>(opcional)</span>
+                                </label>
+                                <input
+                                    type="email"
+                                    placeholder="email@exemplo.com"
+                                    value={contactForm.email}
+                                    onChange={e => setContactForm({ ...contactForm, email: e.target.value })}
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#2a3942", color: "#e9edef", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: "block", marginBottom: 6, fontSize: "0.85rem", color: "#8696a0", fontWeight: 500 }}>
+                                    Empresa <span style={{ opacity: 0.6 }}>(opcional)</span>
+                                </label>
+                                <input
+                                    placeholder="Nome da empresa"
+                                    value={contactForm.company}
+                                    onChange={e => setContactForm({ ...contactForm, company: e.target.value })}
+                                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #374751", background: "#2a3942", color: "#e9edef", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                                />
+                            </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+                            <button
+                                onClick={() => setShowContactModal(false)}
+                                style={{ flex: 1, padding: "12px 16px", background: "transparent", border: "1px solid #374751", color: "#e9edef", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 500, transition: "background 0.2s" }}
+                                onMouseEnter={e => (e.currentTarget.style.background = "#2a3942")}
+                                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                style={{ flex: 1, padding: "12px 16px", background: "#00a884", border: "none", color: "#fff", borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: 600, opacity: (!contactForm.name.trim() || !contactForm.phone.trim()) ? 0.5 : 1, transition: "opacity 0.2s" }}
+                                disabled={!contactForm.name.trim() || !contactForm.phone.trim()}
+                                onClick={async () => {
+                                    try {
+                                        await api.post("/api/contacts", {
+                                            name: contactForm.name,
+                                            phone: contactForm.phone,
+                                            email: contactForm.email || undefined,
+                                            notes: contactForm.company ? `Empresa: ${contactForm.company}` : undefined
+                                        });
+                                        showToast("Contato salvo com sucesso!", "success");
+                                        setContactExists(true);
+                                        setShowContactModal(false);
+                                    } catch (e: any) {
+                                        showToast("Erro: " + (e.response?.data?.error || e.message), "error");
+                                    }
+                                }}
+                            >
+                                Salvar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

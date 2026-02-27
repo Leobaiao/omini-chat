@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Plus, Search } from "lucide-react";
 import { useChat } from "../contexts/ChatContext";
 import type { Conversation } from "../../../shared/types";
@@ -47,16 +47,29 @@ function getUserIdFromToken() {
 
 export function Sidebar({ setView }: { setView: (view: any) => void }) {
     const { conversations, selectedConversationId, setSelectedConversationId } = useChat();
-    const [tab, setTab] = useState<"MY" | "QUEUE" | "RESOLVED">("MY");
+    const token = localStorage.getItem("token");
+    const role = useMemo(() => {
+        if (!token) return "AGENT";
+        try {
+            const payload = JSON.parse(atob(token.split(".")[1]));
+            return payload.role;
+        } catch { return "AGENT"; }
+    }, [token]);
+
+    const [tab, setTab] = useState<"MY" | "QUEUE" | "ALL" | "RESOLVED">(
+        (role === "ADMIN" || role === "SUPERADMIN") ? "ALL" : "MY"
+    );
     const [search, setSearch] = useState("");
 
     const userId = getUserIdFromToken();
     const myChats = conversations.filter(c => c.Status === "OPEN" && c.AssignedUserId === userId);
     const queueChats = conversations.filter(c => c.Status === "OPEN" && !c.AssignedUserId);
+    const allChats = conversations.filter(c => c.Status === "OPEN");
     const resolvedChats = conversations.filter(c => c.Status === "RESOLVED");
 
     let displayedConversations = myChats;
     if (tab === "QUEUE") displayedConversations = queueChats;
+    if (tab === "ALL") displayedConversations = allChats;
     if (tab === "RESOLVED") displayedConversations = resolvedChats;
 
     if (search.trim()) {
@@ -89,6 +102,9 @@ export function Sidebar({ setView }: { setView: (view: any) => void }) {
             </div>
 
             <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
+                {(role === "ADMIN" || role === "SUPERADMIN") && (
+                    <TabButton label="Todos" active={tab === "ALL"} onClick={() => setTab("ALL")} />
+                )}
                 <TabButton label="Minhas" active={tab === "MY"} onClick={() => setTab("MY")} />
                 <TabButton label="Filas" active={tab === "QUEUE"} onClick={() => setTab("QUEUE")} />
                 <TabButton label="Resolvidos" active={tab === "RESOLVED"} onClick={() => setTab("RESOLVED")} />
