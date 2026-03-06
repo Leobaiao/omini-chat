@@ -38,12 +38,29 @@ CREATE TABLE omni.Subscription (
 );
 GO
 
+CREATE TABLE omni.Role (
+    RoleId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    TenantId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES omni.Tenant(TenantId),
+    Name NVARCHAR(100) NOT NULL,
+    CanOpen BIT NOT NULL DEFAULT 1,
+    CanEscalate BIT NOT NULL DEFAULT 0,
+    CanClose BIT NOT NULL DEFAULT 0,
+    CanComment BIT NOT NULL DEFAULT 1,
+    HourlyValue DECIMAL(10,2) NULL,
+    CreatedAt DATETIME2 DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT UK_Role_Name UNIQUE (TenantId, Name)
+);
+GO
+
 CREATE TABLE omni.[User] (
     UserId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     TenantId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES omni.Tenant(TenantId),
     Email NVARCHAR(255) NOT NULL,
     PasswordHash VARBINARY(MAX) NOT NULL,
     Role NVARCHAR(50) NOT NULL DEFAULT 'AGENT', -- ADMIN, AGENT
+    CPF NVARCHAR(14) NULL,
+    RoleId UNIQUEIDENTIFIER NULL FOREIGN KEY REFERENCES omni.Role(RoleId),
+    HasLogAccess BIT NOT NULL DEFAULT 0,
     IsActive BIT DEFAULT 1,
     CreatedAt DATETIME2 DEFAULT SYSUTCDATETIME(),
     CONSTRAINT UK_User_Email UNIQUE (Email)
@@ -105,9 +122,13 @@ BEGIN
         ChannelId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES omni.Channel(ChannelId),
         QueueId UNIQUEIDENTIFIER NULL FOREIGN KEY REFERENCES omni.Queue(QueueId),
         AssignedUserId UNIQUEIDENTIFIER NULL FOREIGN KEY REFERENCES omni.[User](UserId),
+        OpenedByUserId UNIQUEIDENTIFIER NULL FOREIGN KEY REFERENCES omni.[User](UserId),
+        OpenedByContactId UNIQUEIDENTIFIER NULL,
         Title NVARCHAR(255) NULL,
         Kind NVARCHAR(50) NOT NULL DEFAULT 'DIRECT', -- DIRECT, GROUP
         Status NVARCHAR(50) NOT NULL DEFAULT 'OPEN', -- OPEN, RESOLVED, SNOOZED
+        SourceChannel NVARCHAR(50) NULL, -- WHATSAPP, PLATFORM, CHATBOT, EMAIL, RCS, SMS
+        InteractionSequence INT NOT NULL DEFAULT 0,
         LastMessageAt DATETIME2 DEFAULT SYSUTCDATETIME(),
         CreatedAt DATETIME2 DEFAULT SYSUTCDATETIME()
     );
@@ -286,6 +307,7 @@ BEGIN
         TenantId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES omni.Tenant(TenantId),
         Name NVARCHAR(100) NOT NULL,
         Phone NVARCHAR(50) NOT NULL,
+        CPF NVARCHAR(14) NULL,
         Email NVARCHAR(255) NULL,
         Tags NVARCHAR(MAX) NULL, -- JSON array e.g. ["vip", "lead"]
         Notes NVARCHAR(MAX) NULL,
@@ -303,6 +325,42 @@ BEGIN
         Name NVARCHAR(100) NOT NULL,
         Content NVARCHAR(MAX) NOT NULL,
         Variables NVARCHAR(MAX) NULL, -- JSON array e.g. ["name", "orderId"]
+        CreatedAt DATETIME2 DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+-- ConversationHistory
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ConversationHistory' AND schema_id = SCHEMA_ID('omni'))
+BEGIN
+    CREATE TABLE omni.ConversationHistory (
+        HistoryId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+        TenantId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES omni.Tenant(TenantId),
+        ConversationId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES omni.Conversation(ConversationId),
+        SequenceNumber INT NOT NULL,
+        Action NVARCHAR(50) NOT NULL, -- OPENED, REPLIED, ESCALATED, CLOSED, COMMENTED, ASSIGNED, STATUS_CHANGED
+        ActorUserId UNIQUEIDENTIFIER NULL FOREIGN KEY REFERENCES omni.[User](UserId),
+        EscalatedToUserId UNIQUEIDENTIFIER NULL FOREIGN KEY REFERENCES omni.[User](UserId),
+        MetadataJson NVARCHAR(MAX) NULL,
+        CreatedAt DATETIME2 DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+-- AuditLog
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AuditLog' AND schema_id = SCHEMA_ID('omni'))
+BEGIN
+    CREATE TABLE omni.AuditLog (
+        LogId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+        TenantId UNIQUEIDENTIFIER NULL,
+        UserId UNIQUEIDENTIFIER NULL,
+        Action NVARCHAR(100) NOT NULL,
+        TargetTable NVARCHAR(100) NULL,
+        TargetId NVARCHAR(255) NULL,
+        BeforeValues NVARCHAR(MAX) NULL,
+        AfterValues NVARCHAR(MAX) NULL,
+        IpAddress NVARCHAR(45) NULL,
+        UserAgent NVARCHAR(500) NULL,
         CreatedAt DATETIME2 DEFAULT SYSUTCDATETIME()
     );
 END

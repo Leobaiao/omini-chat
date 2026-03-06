@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { getPool } from "../db.js";
 import { NormalizedInbound } from "../adapters/types.js";
+import { recordConversationHistory } from "./conversationHistory.js";
 
 /**
  * Resolve ou cria Conversation para um thread externo.
@@ -77,7 +78,17 @@ export async function resolveConversationForInbound(inb: NormalizedInbound, conn
       SELECT @cid AS ConversationId;
     `);
 
-  return created.recordset[0].ConversationId as string;
+  const cid = created.recordset[0].ConversationId as string;
+
+  // Registrar abertura no histórico
+  await recordConversationHistory({
+    tenantId: inb.tenantId,
+    conversationId: cid,
+    action: "OPENED",
+    metadata: { source: inb.channel || "WHATSAPP", externalUserId: inb.externalUserId }
+  });
+
+  return cid;
 }
 
 export async function saveInboundMessage(inb: NormalizedInbound, conversationId: string) {
@@ -99,6 +110,14 @@ export async function saveInboundMessage(inb: NormalizedInbound, conversationId:
       UPDATE omni.Conversation SET LastMessageAt = SYSUTCDATETIME()
       WHERE ConversationId=@conversationId;
     `);
+
+  // Registrar interação no histórico
+  await recordConversationHistory({
+    tenantId: inb.tenantId,
+    conversationId,
+    action: "REPLIED",
+    metadata: { direction: "IN", mediaType: inb.mediaType || "text" }
+  });
 }
 
 /**
@@ -141,6 +160,14 @@ export async function saveOutboundMessage(tenantId: string, conversationId: stri
       UPDATE omni.Conversation SET LastMessageAt = SYSUTCDATETIME()
       WHERE ConversationId=@conversationId;
     `);
+
+  // Registrar interação no histórico
+  await recordConversationHistory({
+    tenantId,
+    conversationId,
+    action: "REPLIED",
+    metadata: { direction: "OUT" }
+  });
 }
 
 /**

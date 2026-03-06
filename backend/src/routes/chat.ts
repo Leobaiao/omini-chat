@@ -5,6 +5,8 @@ import { authMw } from "../mw.js";
 import { validateBody } from "../middleware/validateMw.js";
 import { resolveConversationForInbound, saveInboundMessage, saveOutboundMessage, findOrCreateConversation, deleteConversation } from "../services/conversation.js";
 import { assignConversation } from "../services/queue.js";
+import { writeAuditLog, extractRequestInfo } from "../services/auditLog.js";
+import { recordConversationHistory, getConversationHistory } from "../services/conversationHistory.js";
 
 const router = Router();
 router.use(authMw);
@@ -235,6 +237,26 @@ router.post("/:id/status", validateBody(z.object({ status: z.enum(["OPEN", "RESO
             .input("status", status)
             .query("UPDATE omni.Conversation SET Status = @status WHERE TenantId = @tenantId AND ConversationId = @conversationId");
 
+        // Registrar no histórico de interações
+        const action = status === 'RESOLVED' ? 'CLOSED' : 'STATUS_CHANGED';
+        await recordConversationHistory({
+            tenantId: tenantId!,
+            conversationId,
+            action,
+            actorUserId: user.userId,
+            metadata: { newStatus: status }
+        });
+
+        // Audit log
+        const reqInfo = extractRequestInfo(req);
+        writeAuditLog({
+            ...reqInfo,
+            action: 'UPDATE_CONVERSATION_STATUS',
+            targetTable: 'Conversation',
+            targetId: conversationId,
+            afterValues: { status }
+        });
+
         const io = req.app.get("io");
         if (io) {
             io.to(conversationId).emit("conversation:updated", { conversationId, timestamp: new Date().toISOString() });
@@ -263,6 +285,28 @@ router.post("/:id/assign", validateBody(z.object({
         if (!allowed) return res.status(403).json({ error: "Access denied" });
 
         await assignConversation(tenantId || "", conversationId, queueId || null, userId || null);
+
+        // Registrar no histórico de interações
+        if (userId) {
+            await recordConversationHistory({
+                tenantId: tenantId!,
+                conversationId,
+                action: 'ASSIGNED',
+                actorUserId: user.userId,
+                escalatedToUserId: userId,
+                metadata: { queueId }
+            });
+        }
+
+        // Audit log
+        const reqInfo = extractRequestInfo(req);
+        writeAuditLog({
+            ...reqInfo,
+            action: 'ASSIGN_CONVERSATION',
+            targetTable: 'Conversation',
+            targetId: conversationId,
+            afterValues: { queueId, userId }
+        });
 
         const io = req.app.get("io");
         if (io) {
@@ -343,6 +387,22 @@ router.post("/demo/:id/messages", validateBody(z.object({ text: z.string().min(1
             });
         }
         res.json({ ok: true });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Histórico de interações (versionamento)
+router.get("/:id/history", async (req, res, next) => {
+    try {
+        const user = (req as any).user;
+        const conversationId = req.params.id;
+
+        const { allowed, tenantId } = await checkConversationAccess(user, conversationId);
+        if (!allowed) return res.status(403).json({ error: "Access denied" });
+
+        const history = await getConversationHistory(tenantId!, conversationId);
+        res.json(history);
     } catch (error) {
         next(error);
     }

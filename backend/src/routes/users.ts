@@ -5,6 +5,7 @@ import { getPool } from "../db.js";
 import { authMw, requireRole } from "../mw.js";
 import { hashPassword } from "../auth.js";
 import { validateBody } from "../middleware/validateMw.js";
+import { writeAuditLog, extractRequestInfo } from "../services/auditLog.js";
 
 const router = Router();
 router.use(authMw);
@@ -69,6 +70,17 @@ router.post("/", requireRole("ADMIN"), validateBody(z.object({
         `);
 
             await transaction.commit();
+
+            // Audit log
+            const reqInfo = extractRequestInfo(req);
+            writeAuditLog({
+                ...reqInfo,
+                action: 'CREATE_USER',
+                targetTable: 'User',
+                targetId: newUserId,
+                afterValues: { email: body.email, name: body.name, role: body.role }
+            });
+
             res.json({ ok: true, userId: newUserId });
         } catch (err) {
             await transaction.rollback();
@@ -143,6 +155,17 @@ router.put("/:id", requireRole("ADMIN"), validateBody(z.object({
                 `);
 
             await transaction.commit();
+
+            // Audit log
+            const reqInfo = extractRequestInfo(req);
+            writeAuditLog({
+                ...reqInfo,
+                action: 'UPDATE_USER',
+                targetTable: 'User',
+                targetId: req.params.id,
+                afterValues: { email: body.email, name: body.name, role: body.role }
+            });
+
             res.json({ ok: true });
         } catch (err) {
             await transaction.rollback();
@@ -189,6 +212,17 @@ router.put("/:id/status", requireRole("ADMIN"), validateBody(z.object({ isActive
                 .query("UPDATE omni.Agent SET IsActive=@active WHERE UserId=@id AND TenantId=@tenantId");
 
             await transaction.commit();
+
+            // Audit log
+            const reqInfo = extractRequestInfo(req);
+            writeAuditLog({
+                ...reqInfo,
+                action: isActive ? 'ACTIVATE_USER' : 'DEACTIVATE_USER',
+                targetTable: 'User',
+                targetId: userId,
+                afterValues: { isActive }
+            });
+
             res.json({ ok: true });
         } catch (err) {
             await transaction.rollback();

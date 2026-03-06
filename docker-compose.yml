@@ -11,7 +11,27 @@ services:
       - "14333:1433"
     volumes:
       - mssql_data:/var/opt/mssql
+      - ./backend/db:/docker-entrypoint-initdb.d
     restart: always
+
+  # Migração do Banco (executa e encerra)
+  db-migrate:
+    image: mcr.microsoft.com/mssql-tools:latest
+    container_name: omnichat_migrate
+    depends_on:
+      - db
+    volumes:
+      - ./backend/db:/scripts
+    environment:
+      - SA_PASSWORD=Intamr17@
+    entrypoint: >
+      /bin/bash -c "
+        echo 'Aguardando SQL Server iniciar...';
+        sleep 15;
+        echo 'Executando migração...';
+        /opt/mssql-tools/bin/sqlcmd -S db -U sa -P $$SA_PASSWORD -C -d OmniChatDev -i /scripts/03-migration-roles-cpf-audit.sql;
+        echo 'Migração concluída!';
+      "
 
   # Backend (API)
   backend:

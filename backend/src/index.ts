@@ -23,6 +23,7 @@ import contactsRouter from "./routes/contacts.js";
 import templatesRouter from "./routes/templates.js";
 import cannedResponsesRouter from "./routes/cannedResponses.js";
 import dashboardRouter from "./routes/dashboard.js";
+import rolesRouter from "./routes/roles.js";
 
 const app = express();
 app.use(cors());
@@ -64,6 +65,7 @@ app.use("/api/contacts", contactsRouter);
 app.use("/api/templates", templatesRouter);
 app.use("/api/canned-responses", cannedResponsesRouter);
 app.use("/api/dashboard", dashboardRouter);
+app.use("/api/roles", rolesRouter);
 
 // Webhooks
 // Ex: POST /api/webhooks/whatsapp/:provider/:connectorId/*
